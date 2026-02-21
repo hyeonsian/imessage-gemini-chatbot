@@ -18,13 +18,24 @@ const settingsBtn = document.getElementById('settingsBtn');
 const settingsModal = document.getElementById('settingsModal');
 const modalClose = document.getElementById('modalClose');
 const modelSelect = document.getElementById('modelSelect');
-const systemPrompt = document.getElementById('systemPrompt');
 const saveSettings = document.getElementById('saveSettings');
 const clearChat = document.getElementById('clearChat');
 const clearBtn = document.getElementById('clearBtn');
+const contactName = document.getElementById('contactName');
 const contactStatus = document.getElementById('contactStatus');
 const enableNotifications = document.getElementById('enableNotifications');
 const voiceBtn = document.getElementById('voiceBtn');
+const splash = document.getElementById('splash');
+
+// Profile Modal Elements
+const headerProfile = document.getElementById('headerProfile');
+const profileModal = document.getElementById('profileModal');
+const profileClose = document.getElementById('profileClose');
+const aiNameInput = document.getElementById('aiNameInput');
+const profileSystemPrompt = document.getElementById('profileSystemPrompt');
+const saveProfileBtn = document.getElementById('saveProfileBtn');
+const headerAvatar = document.getElementById('headerAvatar');
+const profileAvatarLarge = document.getElementById('profileAvatarLarge');
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
@@ -63,11 +74,17 @@ function init() {
   loadSettings();
   setupEventListeners();
   updateStatus();
+  updateAIProfileUI();
   registerServiceWorker();
 
   if (messages.length === 0) {
     showWelcomeMessage();
   }
+
+  // Hide Splash Screen
+  setTimeout(() => {
+    if (splash) splash.classList.add('hidden');
+  }, 1500);
 
   // Listen for messages from Service Worker
   if ('serviceWorker' in navigator) {
@@ -116,6 +133,17 @@ function updateStatus() {
   } else {
     contactStatus.textContent = '데모 모드';
   }
+}
+
+function updateAIProfileUI() {
+  const aiName = localStorage.getItem('ai_name') || 'AI Assistant';
+  const aiAvatar = localStorage.getItem('ai_avatar') || '✦';
+
+  contactName.textContent = aiName;
+  aiNameInput.value = aiName;
+  headerAvatar.textContent = aiAvatar;
+  profileAvatarLarge.textContent = aiAvatar;
+  profileSystemPrompt.value = gemini.systemPrompt;
 }
 
 function getModelName(model) {
@@ -308,7 +336,6 @@ function saveMessages() {
 
 function loadSettings() {
   modelSelect.value = gemini.model;
-  systemPrompt.value = gemini.systemPrompt;
 }
 
 // ===========================
@@ -341,30 +368,65 @@ function setupEventListeners() {
     });
   }
 
-  // Settings modal
-  settingsBtn.addEventListener('click', () => {
-    settingsModal.classList.add('active');
-    loadSettings();
-  });
+  // Profile modal toggle
+  if (headerProfile) {
+    headerProfile.addEventListener('click', () => {
+      profileModal.classList.add('active');
+    });
+  }
 
-  modalClose.addEventListener('click', () => {
-    settingsModal.classList.remove('active');
-  });
+  if (profileClose) {
+    profileClose.addEventListener('click', () => {
+      profileModal.classList.remove('active');
+    });
+  }
 
-  settingsModal.addEventListener('click', (e) => {
-    if (e.target === settingsModal) {
+  // Settings modal toggle
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => {
+      settingsModal.classList.add('active');
+      loadSettings();
+    });
+  }
+
+  if (modalClose) {
+    modalClose.addEventListener('click', () => {
       settingsModal.classList.remove('active');
-    }
-  });
+    });
+  }
 
-  // Save settings
-  saveSettings.addEventListener('click', () => {
-    gemini.setModel(modelSelect.value);
-    gemini.setSystemPrompt(systemPrompt.value.trim());
-    updateStatus();
-    settingsModal.classList.remove('active');
-    showToast('설정이 저장되었습니다 ✓');
-  });
+  if (settingsModal) {
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) {
+        settingsModal.classList.remove('active');
+      }
+    });
+  }
+
+  // Save profile and persona
+  if (saveProfileBtn) {
+    saveProfileBtn.addEventListener('click', () => {
+      const newName = aiNameInput.value.trim() || 'AI Assistant';
+      const newPrompt = profileSystemPrompt.value.trim();
+
+      localStorage.setItem('ai_name', newName);
+      gemini.setSystemPrompt(newPrompt);
+
+      updateAIProfileUI();
+      profileModal.classList.remove('active');
+      showToast('프로필 정보가 저장되었습니다 ✓');
+    });
+  }
+
+  // Save model settings
+  if (saveSettings) {
+    saveSettings.addEventListener('click', () => {
+      gemini.setModel(modelSelect.value);
+      updateStatus();
+      settingsModal.classList.remove('active');
+      showToast('모델 설정이 저장되었습니다 ✓');
+    });
+  }
 
   // Clear chat
   clearChat.addEventListener('click', () => {
