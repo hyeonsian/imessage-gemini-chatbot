@@ -334,6 +334,7 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
           bubble.classList.add('has-grammar-errors');
           bubble.classList.remove('grammar-ok');
           removeGrammarOkIndicator(bubble);
+          attachGrammarSaveButton(bubble, review, bubble.dataset.original, msg?.sentAt || msg?.createdAt || null);
         } else {
           bubble.classList.remove('has-grammar-errors');
           bubble.classList.add('grammar-ok');
@@ -389,8 +390,34 @@ function formatGrammarReview(review) {
       ${editsHtml}
       <div class="grammar-corrected-label">수정 문장</div>
       <div class="grammar-corrected-text">${corrected.replace(/\r\n|\r|\n/g, '<br>')}</div>
+      <button class="grammar-save-btn" type="button" aria-label="수정 문장을 내 사전에 추가">
+        + Save corrected sentence
+      </button>
     </div>
   `;
+}
+
+function attachGrammarSaveButton(bubbleEl, review, originalText, sourceSentAt = null) {
+  if (!bubbleEl || !review?.hasErrors) return;
+  const saveBtn = bubbleEl.querySelector('.grammar-save-btn');
+  if (!saveBtn) return;
+
+  const block = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+
+  saveBtn.addEventListener('pointerdown', block);
+  saveBtn.addEventListener('click', (event) => {
+    block(event);
+    const added = addGrammarDictionaryEntry(originalText, review, sourceSentAt || null);
+    if (added) {
+      saveBtn.textContent = 'Saved to My Dictionary';
+      saveBtn.classList.add('saved');
+    }
+    showToast(added ? '문법 수정 문장을 사전에 추가했습니다.' : '이미 사전에 있는 표현입니다.');
+  });
 }
 
 function appendGrammarOkIndicator(bubbleEl) {
@@ -648,15 +675,18 @@ function saveDictionaryEntries(entries) {
 
 function addDictionaryEntry(option, originalText = '', sourceSentAt = null) {
   const entries = getDictionaryEntries();
-  const exists = entries.some((entry) => entry.text.toLowerCase() === option.text.toLowerCase());
+  const optionText = String(option?.text || '').trim();
+  if (!optionText) return false;
+  const exists = entries.some((entry) => String(entry.text || '').toLowerCase() === optionText.toLowerCase());
   if (exists) return false;
 
   const createdAt = new Date().toISOString();
   entries.unshift({
     id: generateMessageId(),
+    entryType: 'native',
     original: originalText,
     originalSentAt: sourceSentAt || createdAt,
-    text: option.text,
+    text: optionText,
     tone: option.tone,
     nuance: option.nuance,
     createdAt,
@@ -667,6 +697,76 @@ function addDictionaryEntry(option, originalText = '', sourceSentAt = null) {
     renderDictionaryPage();
   }
   return true;
+}
+
+function addGrammarDictionaryEntry(originalText, review, sourceSentAt = null) {
+  const correctedText = String(review?.correctedText || '').trim();
+  if (!correctedText) return false;
+
+  const entries = getDictionaryEntries();
+  const exists = entries.some((entry) => String(entry.text || '').toLowerCase() === correctedText.toLowerCase());
+  if (exists) return false;
+
+  const createdAt = new Date().toISOString();
+  const edits = Array.isArray(review?.edits) ? review.edits : [];
+  const grammarEdits = edits
+    .map((edit) => ({
+      wrong: String(edit?.wrong || '').trim(),
+      right: String(edit?.right || '').trim(),
+      reason: String(edit?.reason || '').trim(),
+    }))
+    .filter((edit) => edit.wrong && edit.right)
+    .slice(0, 4);
+
+  entries.unshift({
+    id: generateMessageId(),
+    entryType: 'grammar',
+    original: originalText || '',
+    originalSentAt: sourceSentAt || createdAt,
+    text: correctedText,
+    tone: '',
+    nuance: '',
+    grammarEdits,
+    createdAt,
+  });
+
+  saveDictionaryEntries(entries);
+  updateDictionaryButtonBadge();
+  if (dictionaryView?.classList.contains('active')) {
+    renderDictionaryPage();
+  }
+  return true;
+}
+
+function getDictionaryEntryType(entry) {
+  return entry?.entryType === 'grammar' ? 'grammar' : 'native';
+}
+
+function getDictionaryEntryTag(entry) {
+  return getDictionaryEntryType(entry) === 'grammar'
+    ? '#Grammar Correction'
+    : '#Native Expression';
+}
+
+function renderDictionaryGrammarEdits(entry) {
+  if (getDictionaryEntryType(entry) !== 'grammar') return '';
+  const edits = Array.isArray(entry.grammarEdits) ? entry.grammarEdits : [];
+  if (edits.length === 0) return '';
+
+  const rows = edits.map((edit) => `
+    <div class="dictionary-grammar-row">
+      <span class="dictionary-grammar-wrong">${escapeHtml(String(edit.wrong || ''))}</span>
+      <span class="dictionary-grammar-arrow">→</span>
+      <span class="dictionary-grammar-right">${escapeHtml(String(edit.right || ''))}</span>
+    </div>
+  `).join('');
+
+  return `
+    <div class="dictionary-grammar-box">
+      <div class="dictionary-grammar-label">Grammar fixes</div>
+      ${rows}
+    </div>
+  `;
 }
 
 function updateDictionaryButtonBadge() {
@@ -686,16 +786,20 @@ function renderDictionaryPage() {
     <div class="dictionary-entry-swipe" data-entry-id="${escapeHtml(entry.id || '')}">
       <button class="dictionary-delete-btn" type="button" aria-label="사전에서 삭제">−</button>
       <div class="dictionary-entry">
-        <div class="dictionary-entry-original-head">
-          <span class="dictionary-entry-original-label">원래 메시지</span>
+        <div class="dictionary-entry-meta-head">
+          <span class="dictionary-entry-type">${escapeHtml(getDictionaryEntryTag(entry))}</span>
           <span class="dictionary-entry-time">${escapeHtml(formatDictionaryTimestamp(entry.originalSentAt || entry.createdAt))}</span>
         </div>
+        <div class="dictionary-entry-original-label">원래 메시지</div>
         <div class="dictionary-entry-original">${escapeHtml(entry.original || '-')}</div>
-        <div class="dictionary-entry-top">
-          <span class="dictionary-tone">${escapeHtml(entry.tone || 'Natural')}</span>
-        </div>
+        ${renderDictionaryGrammarEdits(entry)}
+        ${getDictionaryEntryType(entry) === 'native' ? `
+          <div class="dictionary-entry-top">
+            <span class="dictionary-tone">${escapeHtml(entry.tone || 'Natural')}</span>
+          </div>
+        ` : ''}
         <div class="dictionary-text">${escapeHtml(entry.text)}</div>
-        <div class="dictionary-nuance">${escapeHtml(entry.nuance || '')}</div>
+        ${getDictionaryEntryType(entry) === 'native' ? `<div class="dictionary-nuance">${escapeHtml(entry.nuance || '')}</div>` : ''}
       </div>
     </div>
   `).join('');
