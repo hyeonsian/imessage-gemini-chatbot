@@ -31,6 +31,10 @@ let backSwipeState = {
   startY: 0,
   deltaX: 0,
 };
+let dictionaryFilterState = {
+  grammar: true,
+  native: true,
+};
 
 // ===========================
 // DOM Elements
@@ -748,6 +752,59 @@ function getDictionaryEntryTag(entry) {
     : '#Native Expression';
 }
 
+function getDictionaryEntryTypeClass(entry) {
+  return getDictionaryEntryType(entry) === 'grammar'
+    ? 'type-grammar'
+    : 'type-native';
+}
+
+function isDictionaryTypeVisible(type) {
+  if (type === 'grammar') return dictionaryFilterState.grammar;
+  return dictionaryFilterState.native;
+}
+
+function renderDictionaryFilterRow() {
+  const grammarActive = dictionaryFilterState.grammar ? 'active' : '';
+  const nativeActive = dictionaryFilterState.native ? 'active' : '';
+  return `
+    <div class="dictionary-filter-row">
+      <button class="dictionary-filter-chip chip-grammar ${grammarActive}" type="button" data-filter-type="grammar">#Grammar Correction</button>
+      <button class="dictionary-filter-chip chip-native ${nativeActive}" type="button" data-filter-type="native">#Native Expression</button>
+    </div>
+  `;
+}
+
+function toggleDictionaryFilter(filterType) {
+  const isGrammar = filterType === 'grammar';
+  const targetKey = isGrammar ? 'grammar' : 'native';
+  const otherKey = isGrammar ? 'native' : 'grammar';
+  const targetOn = dictionaryFilterState[targetKey];
+  const otherOn = dictionaryFilterState[otherKey];
+
+  if (targetOn && otherOn) {
+    dictionaryFilterState[targetKey] = true;
+    dictionaryFilterState[otherKey] = false;
+  } else if (targetOn && !otherOn) {
+    dictionaryFilterState[targetKey] = true;
+    dictionaryFilterState[otherKey] = true;
+  } else {
+    dictionaryFilterState[targetKey] = true;
+  }
+}
+
+function attachDictionaryFilterHandlers() {
+  if (!dictionaryPageList) return;
+  const chips = dictionaryPageList.querySelectorAll('.dictionary-filter-chip');
+  chips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const filterType = chip.dataset.filterType;
+      if (filterType !== 'grammar' && filterType !== 'native') return;
+      toggleDictionaryFilter(filterType);
+      renderDictionaryPage();
+    });
+  });
+}
+
 function renderDictionaryGrammarEdits(entry) {
   if (getDictionaryEntryType(entry) !== 'grammar') return '';
   const edits = Array.isArray(entry.grammarEdits) ? entry.grammarEdits : [];
@@ -777,17 +834,25 @@ function updateDictionaryButtonBadge() {
 function renderDictionaryPage() {
   if (!dictionaryPageList) return;
   const entries = getDictionaryEntries();
+  const visibleEntries = entries.filter((entry) => isDictionaryTypeVisible(getDictionaryEntryType(entry)));
+
   if (entries.length === 0) {
-    dictionaryPageList.innerHTML = '<div class="dictionary-empty">아직 저장된 표현이 없습니다.</div>';
+    dictionaryPageList.innerHTML = `
+      ${renderDictionaryFilterRow()}
+      <div class="dictionary-empty">아직 저장된 표현이 없습니다.</div>
+    `;
+    attachDictionaryFilterHandlers();
     return;
   }
 
-  dictionaryPageList.innerHTML = entries.map((entry) => `
+  const listHtml = visibleEntries.length === 0
+    ? '<div class="dictionary-empty">선택한 필터에 맞는 항목이 없습니다.</div>'
+    : visibleEntries.map((entry) => `
     <div class="dictionary-entry-swipe" data-entry-id="${escapeHtml(entry.id || '')}">
       <button class="dictionary-delete-btn" type="button" aria-label="사전에서 삭제">−</button>
       <div class="dictionary-entry">
         <div class="dictionary-entry-meta-head">
-          <span class="dictionary-entry-type">${escapeHtml(getDictionaryEntryTag(entry))}</span>
+          <span class="dictionary-entry-type ${getDictionaryEntryTypeClass(entry)}">${escapeHtml(getDictionaryEntryTag(entry))}</span>
           <span class="dictionary-entry-time">${escapeHtml(formatDictionaryTimestamp(entry.originalSentAt || entry.createdAt))}</span>
         </div>
         <div class="dictionary-entry-original-label">원래 메시지</div>
@@ -804,6 +869,12 @@ function renderDictionaryPage() {
     </div>
   `).join('');
 
+  dictionaryPageList.innerHTML = `
+    ${renderDictionaryFilterRow()}
+    ${listHtml}
+  `;
+
+  attachDictionaryFilterHandlers();
   attachDictionarySwipeHandlers();
 }
 

@@ -1407,6 +1407,36 @@ body.native-sheet-open {
   padding: 12px 4px;
 }
 
+.dictionary-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 6px;
+}
+
+.dictionary-filter-chip {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  background: rgba(120, 120, 128, 0.12);
+  color: var(--text-secondary);
+}
+
+.dictionary-filter-chip.chip-grammar.active {
+  background: rgba(255, 159, 67, 0.2);
+  color: #8f4b00;
+  border-color: rgba(255, 159, 67, 0.36);
+}
+
+.dictionary-filter-chip.chip-native.active {
+  background: rgba(76, 183, 255, 0.18);
+  color: #0f6fae;
+  border-color: rgba(76, 183, 255, 0.34);
+}
+
 .dictionary-entry {
   background: var(--bg-tertiary);
   border-radius: 14px;
@@ -1459,7 +1489,21 @@ body.native-sheet-open {
 .dictionary-entry-type {
   font-size: 11px;
   font-weight: 600;
-  color: #4cb7ff;
+  border-radius: 999px;
+  padding: 4px 9px;
+  line-height: 1;
+}
+
+.dictionary-entry-type.type-native {
+  color: #0f6fae;
+  background: rgba(76, 183, 255, 0.18);
+  border: 1px solid rgba(76, 183, 255, 0.34);
+}
+
+.dictionary-entry-type.type-grammar {
+  color: #8f4b00;
+  background: rgba(255, 159, 67, 0.2);
+  border: 1px solid rgba(255, 159, 67, 0.36);
   letter-spacing: 0.2px;
 }
 
