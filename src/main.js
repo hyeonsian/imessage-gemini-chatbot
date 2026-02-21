@@ -343,7 +343,12 @@ function setupEventListeners() {
         const response = await fetch('/api/cron?test=true');
         const data = await response.json();
         if (data.success) {
-          showToast('잠시 후 메시지가 도착합니다! 📩');
+          const subCount = data.totalSubscriptions || 0;
+          if (subCount === 0) {
+            showToast('서버에 등록된 기기가 없습니다. 알림을 다시 활성화해 주세요.');
+          } else {
+            showToast(`발송 요청 성공! (대상 기기: ${subCount}대)`);
+          }
         } else {
           showToast(`실패: ${data.skipped || data.error || '알 수 없는 오류'}`);
         }
@@ -400,25 +405,24 @@ async function subscribeUserToPush() {
   try {
     const registration = await navigator.serviceWorker.ready;
 
-    // Check for existing subscription
-    const existingSubscription = await registration.pushManager.getSubscription();
-    if (existingSubscription) {
-      console.log('Already subscribed to push.');
-      return;
+    // Get subscription
+    let subscription = await registration.pushManager.getSubscription();
+
+    // If no subscription, create one
+    if (!subscription) {
+      if (!VAPID_PUBLIC_KEY) {
+        console.error('VAPID Public Key missing (VITE_VAPID_PUBLIC_KEY). Please check Vercel Env Vars.');
+        showToast('서버 설정(VAPID Key)이 누락되었습니다.');
+        return;
+      }
+
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
     }
 
-    if (!VAPID_PUBLIC_KEY) {
-      console.error('VAPID Public Key missing (VITE_VAPID_PUBLIC_KEY). Please check Vercel Env Vars.');
-      showToast('서버 설정(VAPID Key)이 누락되었습니다.');
-      return;
-    }
-
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-    });
-
-    // Send subscription to server
+    // Always send/sync subscription to server
     const response = await fetch('/api/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
