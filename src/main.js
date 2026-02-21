@@ -434,6 +434,7 @@ function setupEventListeners() {
         profileEditBtn.textContent = '저장';
         aiNameInput.disabled = false;
         profileSystemPrompt.disabled = false;
+        profileAvatarLarge.classList.add('editable');
         if (changeAvatarBtn) changeAvatarBtn.style.display = 'block';
         setTimeout(() => aiNameInput.focus(), 100);
       } else {
@@ -442,10 +443,18 @@ function setupEventListeners() {
         profileEditBtn.textContent = '편집';
         aiNameInput.disabled = true;
         profileSystemPrompt.disabled = true;
+        profileAvatarLarge.classList.remove('editable');
         if (changeAvatarBtn) changeAvatarBtn.style.display = 'none';
       }
     });
   }
+
+  // Allow clicking avatar to change it during editing
+  profileAvatarLarge.addEventListener('click', () => {
+    if (isEditingProfile && avatarInput) {
+      avatarInput.click();
+    }
+  });
 
   function saveProfile() {
     const newName = aiNameInput.value.trim() || 'AI Assistant';
