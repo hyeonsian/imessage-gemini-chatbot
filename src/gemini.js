@@ -150,14 +150,10 @@ Sentence:
 
     async getNativeAlternatives(text) {
         if (!this.isConfigured) {
-            return [
-                { text, tone: 'Neutral', nuance: 'Original expression' },
-                { text: `Maybe: ${text}`, tone: 'Casual', nuance: 'Friendly everyday vibe' },
-                { text: `A cleaner way: ${text}`, tone: 'Natural', nuance: 'Smoother native phrasing' }
-            ];
+            return this._buildFallbackNativeAlternatives(text);
         }
 
-        const prompt = `You rewrite English learner sentences into native-sounding alternatives.
+        const jsonPrompt = `You rewrite English learner sentences into native-sounding alternatives.
 Return ONLY valid JSON (no markdown, no extra text) with this schema:
 {
   "alternatives": [
@@ -178,52 +174,72 @@ Sentence:
 
         try {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.effectiveApiKey}`;
-            const body = {
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.4, maxOutputTokens: 1024 }
+            const callModel = async (prompt, responseMimeType = null) => {
+                const generationConfig = {
+                    temperature: 0.4,
+                    maxOutputTokens: 1024
+                };
+                if (responseMimeType) {
+                    generationConfig.responseMimeType = responseMimeType;
+                }
+
+                const body = {
+                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                    generationConfig
+                };
+
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+
+                const data = await res.json();
+                return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
             };
 
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
-            }
-
-            const data = await res.json();
-            const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-            if (!raw) {
-                throw new Error('No native alternatives returned');
-            }
-
-            const parsed = this._parseJsonSafely(raw);
-            const alternatives = Array.isArray(parsed?.alternatives) ? parsed.alternatives : [];
-
-            const normalized = alternatives
-                .filter((item) => item && typeof item.text === 'string')
-                .map((item) => ({
-                    text: item.text.trim(),
-                    tone: typeof item.tone === 'string' && item.tone.trim() ? item.tone.trim() : 'Natural',
-                    nuance: typeof item.nuance === 'string' && item.nuance.trim() ? item.nuance.trim() : 'Natural phrasing'
-                }))
-                .filter((item) => item.text.length > 0)
-                .slice(0, 3);
-
+            // 1st try: strict JSON response
+            const rawJson = await callModel(jsonPrompt, 'application/json');
+            const parsed = this._parseJsonSafely(rawJson);
+            const normalized = this._normalizeNativeAlternatives(parsed?.alternatives || []);
             if (normalized.length === 3) {
                 return normalized;
+            }
+
+            // 2nd try: robust delimiter-based plain text fallback
+            const fallbackPrompt = `Rewrite this sentence into 3 native alternatives.
+Output format (exactly 3 lines):
+1) <sentence> || <tone> || <short nuance>
+2) <sentence> || <tone> || <short nuance>
+3) <sentence> || <tone> || <short nuance>
+No extra lines.
+
+Sentence:
+"${text}"`;
+            const rawList = await callModel(fallbackPrompt);
+            const lineItems = rawList
+                .split('\n')
+                .map((line) => line.trim())
+                .filter(Boolean)
+                .map((line) => line.replace(/^\d+\)\s*/, ''))
+                .map((line) => {
+                    const [rewritten = '', tone = 'Natural', nuance = 'Natural phrasing'] = line.split('||').map((v) => v.trim());
+                    return { text: rewritten, tone, nuance };
+                });
+
+            const lineNormalized = this._normalizeNativeAlternatives(lineItems);
+            if (lineNormalized.length === 3) {
+                return lineNormalized;
             }
 
             throw new Error('Insufficient alternatives');
         } catch (error) {
             console.error('Native alternatives error:', error);
-            return [
-                { text, tone: 'Neutral', nuance: 'Original expression' },
-                { text: `I mean, ${text}`, tone: 'Casual', nuance: 'Light and friendly' },
-                { text: `A more natural way: ${text}`, tone: 'Natural', nuance: 'Cleaner native flow' }
-            ];
+            return this._buildFallbackNativeAlternatives(text);
         }
     }
 
@@ -388,6 +404,27 @@ Sentence:
                 throw new Error('Invalid JSON payload');
             }
         }
+    }
+
+    _normalizeNativeAlternatives(alternatives) {
+        return alternatives
+            .filter((item) => item && typeof item.text === 'string')
+            .map((item) => ({
+                text: item.text.trim(),
+                tone: typeof item.tone === 'string' && item.tone.trim() ? item.tone.trim() : 'Natural',
+                nuance: typeof item.nuance === 'string' && item.nuance.trim() ? item.nuance.trim() : 'Natural phrasing'
+            }))
+            .filter((item) => item.text.length > 0)
+            .slice(0, 3);
+    }
+
+    _buildFallbackNativeAlternatives(text) {
+        const compact = (text || '').trim();
+        return [
+            { text: compact, tone: 'Neutral', nuance: 'Original expression' },
+            { text: compact, tone: 'Casual', nuance: 'Friendly everyday tone' },
+            { text: compact, tone: 'Polite', nuance: 'Softer and more polite tone' }
+        ];
     }
 
     _isMinorGrammarEdit(wrong, right) {
