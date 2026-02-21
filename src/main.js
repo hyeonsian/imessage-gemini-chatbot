@@ -4,7 +4,18 @@ import { GeminiAPI } from './gemini.js';
 // ===========================
 // App State
 // ===========================
+// Initialize core modules
 const gemini = new GeminiAPI();
+
+// Force-update old prompt to new concise prompt for existing users
+const oldDefaultPrompt = 'You are a friendly and helpful AI English tutor. ALWAYS respond ONLY in natural, conversational English. Never use Korean in your responses unless specifically asked to translate a word.';
+const newDefaultPrompt = "You are a close friend and a helpful English tutor. Talk like a real person, not an AI. Keep your responses VERY concise (usually 1-2 sentences). Be casual and friendly. Use natural, conversational English only. Don't be wordy or give long-winded explanations unless specifically asked.";
+if (localStorage.getItem('gemini_system_prompt') === oldDefaultPrompt) {
+  localStorage.setItem('gemini_system_prompt', newDefaultPrompt);
+  gemini.setSystemPrompt(newDefaultPrompt);
+}
+
+// State
 let messages = JSON.parse(localStorage.getItem('chat_messages') || '[]');
 let isProcessing = false;
 
@@ -121,19 +132,19 @@ function showWelcomeMessage() {
   welcome.className = 'welcome-msg';
   welcome.id = 'welcomeMsg';
   welcome.innerHTML = `
-    <div class="emoji">✦</div>
+  < div class="emoji" >✦</div >
     <h2>AI Assistant</h2>
     <p>${gemini.isConfigured
       ? 'English Learning Mode.<br>Send a message to start practicing!'
       : '설정이 필요합니다.<br>관리자에게 문의하거나 Vercel 환경 변수를 확인해주세요.'
     }</p>
-  `;
+`;
   chatMessages.appendChild(welcome);
 }
 
 function updateStatus() {
   if (gemini.isConfigured) {
-    contactStatus.textContent = `${getModelName(gemini.model)}`;
+    contactStatus.textContent = `${getModelName(gemini.model)} `;
   } else {
     contactStatus.textContent = '데모 모드';
   }
@@ -191,7 +202,7 @@ function renderMessages() {
 
 function appendMessageBubble(role, text, time, animate = true, translation = null) {
   const msgDiv = document.createElement('div');
-  msgDiv.className = `message ${role === 'user' ? 'sent' : 'received'}`;
+  msgDiv.className = `message ${role === 'user' ? 'sent' : 'received'} `;
   if (!animate) msgDiv.style.animation = 'none';
 
   const bubble = document.createElement('div');
@@ -323,7 +334,7 @@ async function sendMessage() {
     }
   } catch (error) {
     removeTypingIndicator(typingIndicator);
-    appendMessageBubble('system', `에러가 발생했습니다: ${error.message}`, formatTime(new Date()));
+    appendMessageBubble('system', `에러가 발생했습니다: ${error.message} `, formatTime(new Date()));
   } finally {
     isProcessing = false;
   }
@@ -338,10 +349,10 @@ function showTypingIndicator() {
   const indicator = document.createElement('div');
   indicator.className = 'typing-indicator';
   indicator.innerHTML = `
+  < div class="dot" ></div >
     <div class="dot"></div>
     <div class="dot"></div>
-    <div class="dot"></div>
-  `;
+`;
   chatMessages.appendChild(indicator);
   scrollToBottom();
   return indicator;
@@ -564,10 +575,10 @@ function setupEventListeners() {
           if (subCount === 0) {
             showToast('서버에 등록된 기기가 없습니다. 알림을 다시 활성화해 주세요.');
           } else {
-            showToast(`발송 요청 성공! (대상 기기: ${subCount}대)`);
+            showToast(`발송 요청 성공!(대상 기기: ${subCount}대)`);
           }
         } else {
-          showToast(`실패: ${data.skipped || data.error || '알 수 없는 오류'}`);
+          showToast(`실패: ${data.skipped || data.error || '알 수 없는 오류'} `);
         }
       } catch (err) {
         showToast('서버 연결 실패');

@@ -18,9 +18,9 @@ export class GeminiAPI {
     constructor() {
         this.envApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
         this.apiKey = localStorage.getItem('gemini_api_key') || '';
-        this.model = localStorage.getItem('gemini_model') || 'gemini-3-flash-preview';
+        this.model = localStorage.getItem('gemini_model') || 'gemini-1.5-flash';
         this.systemPrompt = localStorage.getItem('gemini_system_prompt') ||
-            'You are a friendly and helpful AI English tutor. ALWAYS respond ONLY in natural, conversational English. Never use Korean in your responses unless specifically asked to translate a word.';
+            "You are a close friend and a helpful English tutor. Talk like a real person, not an AI. Keep your responses VERY concise (usually 1-2 sentences). Be casual and friendly. Use natural, conversational English only. Don't be wordy or give long-winded explanations unless specifically asked.";
         this.conversationHistory = [];
     }
 
