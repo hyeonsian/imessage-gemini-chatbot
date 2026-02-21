@@ -24,7 +24,6 @@ let isProcessing = false;
 let hasMessageIdChanges = false;
 let nativeSheetRequestId = 0;
 let nativeSheetRefs = null;
-let dictionarySheetRefs = null;
 let backSwipeState = {
   tracking: false,
   active: false,
@@ -49,6 +48,9 @@ const clearChat = document.getElementById('clearChat');
 const clearBtn = document.getElementById('clearBtn');
 const conversationListView = document.getElementById('conversationListView');
 const conversationList = document.getElementById('conversationList');
+const dictionaryView = document.getElementById('dictionaryView');
+const dictionaryPageList = document.getElementById('dictionaryPageList');
+const dictionaryBackBtn = document.getElementById('dictionaryBackBtn');
 const dictionaryBtn = document.getElementById('dictionaryBtn');
 const contactName = document.getElementById('contactName');
 const contactStatus = document.getElementById('contactStatus');
@@ -107,10 +109,11 @@ function init() {
   ensureMessageIds();
   if (hasMessageIdChanges) saveMessages();
   ensureNativeAlternativesSheet();
-  ensureDictionarySheet();
   renderConversationList();
+  renderDictionaryPage();
   updateDictionaryButtonBadge();
   closeConversationList();
+  closeDictionaryPage();
 
   renderMessages();
   loadSettings();
@@ -557,10 +560,10 @@ async function openNativeAlternativesSheet(originalText) {
     `).join('')}
   `;
 
-  attachNativeOptionSwipeHandlers(alternatives);
+  attachNativeOptionSwipeHandlers(alternatives, originalText);
 }
 
-function attachNativeOptionSwipeHandlers(alternatives) {
+function attachNativeOptionSwipeHandlers(alternatives, originalText) {
   if (!nativeSheetRefs?.body) return;
   const rows = nativeSheetRefs.body.querySelectorAll('.native-option-swipe');
 
@@ -583,7 +586,7 @@ function attachNativeOptionSwipeHandlers(alternatives) {
     };
 
     addBtn.addEventListener('click', () => {
-      const added = addDictionaryEntry(option);
+      const added = addDictionaryEntry(option, originalText);
       showToast(added ? '내 사전에 추가했습니다.' : '이미 사전에 있는 표현입니다.');
       closeRow();
     });
@@ -639,13 +642,14 @@ function saveDictionaryEntries(entries) {
   localStorage.setItem('native_dictionary_entries', JSON.stringify(entries));
 }
 
-function addDictionaryEntry(option) {
+function addDictionaryEntry(option, originalText = '') {
   const entries = getDictionaryEntries();
   const exists = entries.some((entry) => entry.text.toLowerCase() === option.text.toLowerCase());
   if (exists) return false;
 
   entries.unshift({
     id: generateMessageId(),
+    original: originalText,
     text: option.text,
     tone: option.tone,
     nuance: option.nuance,
@@ -653,8 +657,8 @@ function addDictionaryEntry(option) {
   });
   saveDictionaryEntries(entries);
   updateDictionaryButtonBadge();
-  if (dictionarySheetRefs?.overlay?.classList.contains('active')) {
-    renderDictionarySheetBody();
+  if (dictionaryView?.classList.contains('active')) {
+    renderDictionaryPage();
   }
   return true;
 }
@@ -664,44 +668,18 @@ function updateDictionaryButtonBadge() {
   dictionaryBtn.dataset.count = String(getDictionaryEntries().length);
 }
 
-function ensureDictionarySheet() {
-  if (dictionarySheetRefs) return dictionarySheetRefs;
-
-  const overlay = document.createElement('div');
-  overlay.className = 'dictionary-sheet-overlay';
-  overlay.innerHTML = `
-    <div class="dictionary-sheet" role="dialog" aria-label="내 사전">
-      <div class="dictionary-sheet-handle"></div>
-      <div class="dictionary-sheet-header">
-        <div class="dictionary-sheet-title">내 사전</div>
-        <button class="dictionary-sheet-close" type="button">Close</button>
-      </div>
-      <div class="dictionary-sheet-body"></div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-
-  const body = overlay.querySelector('.dictionary-sheet-body');
-  const closeBtn = overlay.querySelector('.dictionary-sheet-close');
-  closeBtn.addEventListener('click', () => closeDictionarySheet());
-  overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) closeDictionarySheet();
-  });
-
-  dictionarySheetRefs = { overlay, body };
-  return dictionarySheetRefs;
-}
-
-function renderDictionarySheetBody() {
-  const refs = ensureDictionarySheet();
+function renderDictionaryPage() {
+  if (!dictionaryPageList) return;
   const entries = getDictionaryEntries();
   if (entries.length === 0) {
-    refs.body.innerHTML = '<div class="dictionary-empty">아직 저장된 표현이 없습니다.</div>';
+    dictionaryPageList.innerHTML = '<div class="dictionary-empty">아직 저장된 표현이 없습니다.</div>';
     return;
   }
 
-  refs.body.innerHTML = entries.map((entry) => `
+  dictionaryPageList.innerHTML = entries.map((entry) => `
     <div class="dictionary-entry">
+      <div class="dictionary-entry-original-label">원래 메시지</div>
+      <div class="dictionary-entry-original">${escapeHtml(entry.original || '-')}</div>
       <div class="dictionary-entry-top">
         <span class="dictionary-tone">${escapeHtml(entry.tone || 'Natural')}</span>
       </div>
@@ -711,15 +689,15 @@ function renderDictionarySheetBody() {
   `).join('');
 }
 
-function openDictionarySheet() {
-  const refs = ensureDictionarySheet();
-  renderDictionarySheetBody();
-  refs.overlay.classList.add('active');
+function openDictionaryPage() {
+  renderDictionaryPage();
+  if (dictionaryView) dictionaryView.classList.add('active');
+  if (conversationListView) conversationListView.classList.remove('active');
+  document.body.classList.add('conversation-list-open');
 }
 
-function closeDictionarySheet() {
-  const refs = ensureDictionarySheet();
-  refs.overlay.classList.remove('active');
+function closeDictionaryPage() {
+  if (dictionaryView) dictionaryView.classList.remove('active');
 }
 
 // ===========================
@@ -988,7 +966,14 @@ function setupEventListeners() {
 
   if (dictionaryBtn) {
     dictionaryBtn.addEventListener('click', () => {
-      openDictionarySheet();
+      openDictionaryPage();
+    });
+  }
+
+  if (dictionaryBackBtn) {
+    dictionaryBackBtn.addEventListener('click', () => {
+      closeDictionaryPage();
+      openConversationList();
     });
   }
 
@@ -1068,6 +1053,7 @@ function renderConversationList() {
 
 function openConversationList() {
   renderConversationList();
+  closeDictionaryPage();
   if (conversationListView) conversationListView.classList.add('active');
   document.body.classList.add('conversation-list-open');
 }
