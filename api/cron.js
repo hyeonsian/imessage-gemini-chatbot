@@ -87,5 +87,15 @@ async function generateProactiveMessage() {
     });
 
     const data = await response.json();
+
+    if (data.error) {
+        throw new Error(`Gemini API Error: ${data.error.message}`);
+    }
+
+    if (!data.candidates || data.candidates.length === 0) {
+        console.error('Gemini API No Candidates:', JSON.stringify(data));
+        throw new Error('Gemini API returned no candidates. Check safety settings or prompt.');
+    }
+
     return data.candidates[0].content.parts[0].text.trim();
 }
