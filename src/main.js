@@ -350,8 +350,11 @@ function updateSendButton() {
 // Push Notifications
 // ===========================
 async function requestNotificationPermission(manual = false) {
-  if (!('Notification' in window)) {
-    console.warn('Notifications not supported in this browser.');
+  const isNotificationSupported = 'Notification' in window;
+  const isPushSupported = 'serviceWorker' in navigator && 'PushManager' in window;
+
+  if (!isNotificationSupported && !isPushSupported) {
+    console.warn('Notifications/Push not supported in this browser.');
     return 'unsupported';
   }
 
