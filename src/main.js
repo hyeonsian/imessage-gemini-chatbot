@@ -353,125 +353,133 @@ function setupEventListeners() {
       showWelcomeMessage();
       showToast('새 대화가 시작되었습니다');
     }
-  });
+    // Enable Notifications button
+    if (enableNotifications) {
+      enableNotifications.addEventListener('click', async () => {
+        const result = await requestNotificationPermission(true);
+        if (result === 'granted') {
+          showToast('알림 권한이 승인되었습니다! 🎉');
+        } else if (result === 'denied') {
+          showToast('알림 권한이 거부되었습니다. 설정에서 변경해주세요.');
+        } else if (result === 'unsupported') {
+          showToast('이 브라우저는 알림을 지원하지 않습니다.');
+        }
+      });
+    }
 
-}
-    });
+    // Test Push button
+    if (testPushBtn) {
+      testPushBtn.addEventListener('click', async () => {
+        showToast('테스트 메시지를 요청 중...');
+        try {
+          const response = await fetch('/api/cron?test=true');
+          const data = await response.json();
+          if (data.success) {
+            showToast('잠시 후 메시지가 도착합니다! 📩');
+          } else {
+            showToast(`실패: ${data.skipped || data.error || '알 수 없는 오류'}`);
+          }
+        } catch (err) {
+          showToast('서버 연결 실패');
+        }
+      });
+    }
   }
 
-// Test Push button
-if (testPushBtn) {
-  testPushBtn.addEventListener('click', async () => {
-    showToast('테스트 메시지를 요청 중...');
-    try {
-      const response = await fetch('/api/cron?test=true');
-      const data = await response.json();
-      if (data.success) {
-        showToast('잠시 후 메시지가 도착합니다! 📩');
-      } else {
-        showToast(`실패: ${data.skipped || data.error || '알 수 없는 오류'}`);
-      }
-    } catch (err) {
-      showToast('서버 연결 실패');
-    }
-  });
-}
-}
-
 function updateSendButton() {
-  sendBtn.disabled = messageInput.value.trim().length === 0;
-}
+      sendBtn.disabled = messageInput.value.trim().length === 0;
+    }
 
 // Push Notifications
 // ===========================
 async function requestNotificationPermission(manual = false) {
-  if (!('serviceWorker' in navigator)) {
-    console.warn('Service Worker not supported');
-    return 'unsupported';
-  }
-
-  // On iOS PWA, Notification might be available but 'Notification' in window might be false in some contexts
-  // or PushManager might be the primary way to check.
-  const hasNotification = 'Notification' in window;
-  const hasPush = 'PushManager' in window;
-
-  if (!hasNotification && !hasPush) {
-    console.warn('Neither Notification nor PushManager supported');
-    return 'unsupported';
-  }
-
-  try {
-    if (Notification.permission === 'default') {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        await subscribeUserToPush();
-        return 'granted';
+      if (!('serviceWorker' in navigator)) {
+        console.warn('Service Worker not supported');
+        return 'unsupported';
       }
-      return permission;
-    } else if (Notification.permission === 'granted') {
-      await subscribeUserToPush();
-      return 'granted';
+
+      // On iOS PWA, Notification might be available but 'Notification' in window might be false in some contexts
+      // or PushManager might be the primary way to check.
+      const hasNotification = 'Notification' in window;
+      const hasPush = 'PushManager' in window;
+
+      if (!hasNotification && !hasPush) {
+        console.warn('Neither Notification nor PushManager supported');
+        return 'unsupported';
+      }
+
+      try {
+        if (Notification.permission === 'default') {
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+            await subscribeUserToPush();
+            return 'granted';
+          }
+          return permission;
+        } else if (Notification.permission === 'granted') {
+          await subscribeUserToPush();
+          return 'granted';
+        }
+        return Notification.permission;
+      } catch (err) {
+        console.error('Error requesting notification permission:', err);
+        if (manual) showToast('알림 요청 중 오류가 발생했습니다.');
+        return 'error';
+      }
     }
-    return Notification.permission;
-  } catch (err) {
-    console.error('Error requesting notification permission:', err);
-    if (manual) showToast('알림 요청 중 오류가 발생했습니다.');
-    return 'error';
-  }
-}
 
 async function subscribeUserToPush() {
-  try {
-    const registration = await navigator.serviceWorker.ready;
+      try {
+        const registration = await navigator.serviceWorker.ready;
 
-    // Check for existing subscription
-    const existingSubscription = await registration.pushManager.getSubscription();
-    if (existingSubscription) {
-      console.log('Already subscribed to push.');
-      return;
+        // Check for existing subscription
+        const existingSubscription = await registration.pushManager.getSubscription();
+        if (existingSubscription) {
+          console.log('Already subscribed to push.');
+          return;
+        }
+
+        if (!VAPID_PUBLIC_KEY) {
+          console.error('VAPID Public Key missing (VITE_VAPID_PUBLIC_KEY). Please check Vercel Env Vars.');
+          showToast('서버 설정(VAPID Key)이 누락되었습니다.');
+          return;
+        }
+
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+
+        // Send subscription to server
+        const response = await fetch('/api/push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(subscription)
+        });
+
+        if (!response.ok) throw new Error('Failed to register subscription on server');
+
+        console.log('Successfully subscribed to Web Push');
+      } catch (error) {
+        console.error('Failed to subscribe to Web Push:', error);
+        showToast('알림 등록에 실패했습니다.');
+      }
     }
-
-    if (!VAPID_PUBLIC_KEY) {
-      console.error('VAPID Public Key missing (VITE_VAPID_PUBLIC_KEY). Please check Vercel Env Vars.');
-      showToast('서버 설정(VAPID Key)이 누락되었습니다.');
-      return;
-    }
-
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-    });
-
-    // Send subscription to server
-    const response = await fetch('/api/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(subscription)
-    });
-
-    if (!response.ok) throw new Error('Failed to register subscription on server');
-
-    console.log('Successfully subscribed to Web Push');
-  } catch (error) {
-    console.error('Failed to subscribe to Web Push:', error);
-    showToast('알림 등록에 실패했습니다.');
-  }
-}
 
 function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
 
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
 
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    }
 
 // ===========================
 // Start
