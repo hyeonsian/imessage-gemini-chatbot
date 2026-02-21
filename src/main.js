@@ -355,19 +355,27 @@ function setupEventListeners() {
     }
   });
 
-  // Enable Notifications button
-  if (enableNotifications) {
-    enableNotifications.addEventListener('click', async () => {
-      const result = await requestNotificationPermission(true);
-      if (result === 'granted') {
-        showToast('알림 권한이 승인되었습니다! 🎉');
-      } else if (result === 'denied') {
-        showToast('알림 권한이 거부되었습니다. 설정에서 변경해주세요.');
-      } else if (result === 'unsupported') {
-        showToast('이 브라우저는 알림을 지원하지 않습니다.');
-      }
+}
     });
   }
+
+// Test Push button
+if (testPushBtn) {
+  testPushBtn.addEventListener('click', async () => {
+    showToast('테스트 메시지를 요청 중...');
+    try {
+      const response = await fetch('/api/cron?test=true');
+      const data = await response.json();
+      if (data.success) {
+        showToast('잠시 후 메시지가 도착합니다! 📩');
+      } else {
+        showToast(`실패: ${data.skipped || data.error || '알 수 없는 오류'}`);
+      }
+    } catch (err) {
+      showToast('서버 연결 실패');
+    }
+  });
+}
 }
 
 function updateSendButton() {
