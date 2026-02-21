@@ -31,13 +31,15 @@ const splash = document.getElementById('splash');
 const headerProfile = document.getElementById('headerProfile');
 const profileModal = document.getElementById('profileModal');
 const profileClose = document.getElementById('profileClose');
+const profileEditBtn = document.getElementById('profileEditBtn');
 const aiNameInput = document.getElementById('aiNameInput');
 const profileSystemPrompt = document.getElementById('profileSystemPrompt');
-const saveProfileBtn = document.getElementById('saveProfileBtn');
 const changeAvatarBtn = document.getElementById('changeAvatarBtn');
 const avatarInput = document.getElementById('avatarInput');
 const headerAvatar = document.getElementById('headerAvatar');
 const profileAvatarLarge = document.getElementById('profileAvatarLarge');
+
+let isEditingProfile = false;
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
@@ -422,26 +424,45 @@ function setupEventListeners() {
     });
   }
 
-  // Save profile and persona
-  if (saveProfileBtn) {
-    saveProfileBtn.addEventListener('click', () => {
-      const newName = aiNameInput.value.trim() || 'AI Assistant';
-      const newPrompt = profileSystemPrompt.value.trim();
+  // Profile edit toggle logic
+  if (profileEditBtn) {
+    profileEditBtn.addEventListener('click', () => {
+      isEditingProfile = !isEditingProfile;
 
-      // Get avatar: either DataURL from background-image or text content
-      let newAvatar = profileAvatarLarge.textContent;
-      if (profileAvatarLarge.style.backgroundImage && profileAvatarLarge.style.backgroundImage !== 'none') {
-        newAvatar = profileAvatarLarge.style.backgroundImage.slice(5, -2); // Remove url("")
+      if (isEditingProfile) {
+        // Switch to EDIT mode
+        profileEditBtn.textContent = '저장';
+        aiNameInput.disabled = false;
+        profileSystemPrompt.disabled = false;
+        if (changeAvatarBtn) changeAvatarBtn.style.display = 'block';
+        setTimeout(() => aiNameInput.focus(), 100);
+      } else {
+        // Switch to SAVE (View) mode
+        saveProfile();
+        profileEditBtn.textContent = '편집';
+        aiNameInput.disabled = true;
+        profileSystemPrompt.disabled = true;
+        if (changeAvatarBtn) changeAvatarBtn.style.display = 'none';
       }
-
-      localStorage.setItem('ai_name', newName);
-      localStorage.setItem('ai_avatar', newAvatar);
-      gemini.setSystemPrompt(newPrompt);
-
-      updateAIProfileUI();
-      profileModal.classList.remove('active');
-      showToast('프로필 정보가 저장되었습니다 ✓');
     });
+  }
+
+  function saveProfile() {
+    const newName = aiNameInput.value.trim() || 'AI Assistant';
+    const newPrompt = profileSystemPrompt.value.trim();
+
+    // Get avatar: either DataURL from background-image or text content
+    let newAvatar = profileAvatarLarge.textContent;
+    if (profileAvatarLarge.style.backgroundImage && profileAvatarLarge.style.backgroundImage !== 'none') {
+      newAvatar = profileAvatarLarge.style.backgroundImage.slice(5, -2); // Remove url("")
+    }
+
+    localStorage.setItem('ai_name', newName);
+    localStorage.setItem('ai_avatar', newAvatar);
+    gemini.setSystemPrompt(newPrompt);
+
+    updateAIProfileUI();
+    showToast('프로필 정보가 저장되었습니다 ✓');
   }
 
   // Change avatar logic (Photo / Emoji)

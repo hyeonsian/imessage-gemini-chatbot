@@ -161,22 +161,21 @@ body {
   justify-content: center;
 }
 
-.header-btn {
-  width: 40px;
-  height: 40px;
-  border: none;
+.icon-btn {
   background: transparent;
-  color: var(--accent);
+  border: none;
+  padding: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-btn);
-  transition: background 0.2s, opacity 0.2s;
+  border-radius: 50%;
+  color: var(--accent);
+  transition: opacity 0.2s;
 }
 
-.header-btn:hover {
-  background: var(--hover-bg);
+.icon-btn:active {
+  opacity: 0.4;
 }
 
 .header-btn:active {
@@ -1103,26 +1102,59 @@ body {
 }
 
 .profile-modal-header {
-  padding: 16px;
+  padding: calc(var(--safe-area-top) + 24px) 16px 12px;
+  /* Increased for status bar */
   display: flex;
   align-items: center;
   justify-content: space-between;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .profile-header-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   font-weight: 600;
   font-size: 17px;
 }
 
-.profile-close {
+.profile-back-btn,
+.profile-edit-btn {
   background: transparent;
   border: none;
   color: var(--accent);
   font-size: 17px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  z-index: 2;
+}
+
+.profile-edit-btn {
+  font-weight: 600;
+}
+
+.profile-name-input {
+  width: 100%;
+  max-width: 280px;
+  text-align: center;
+  font-size: 28px;
+  font-weight: 700;
+  border: none;
+  background: transparent;
+  margin-top: 4px;
+  color: var(--text-primary);
+}
+
+.profile-name-input:disabled {
+  opacity: 1;
+  color: var(--text-primary);
 }
 
 .profile-hero {
@@ -1256,15 +1288,19 @@ body {
 
 .profile-prompt-input {
   width: 100%;
-  min-height: 120px;
-  background: transparent;
+  min-height: 100px;
   border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  resize: none;
   color: var(--text-primary);
-  padding: 12px 16px;
-  font-size: 16px;
-  line-height: 1.4;
-  resize: vertical;
-  outline: none;
+}
+
+.profile-prompt-input:disabled {
+  opacity: 0.8;
+  color: var(--text-primary);
 }
 
 .ios-switch {
