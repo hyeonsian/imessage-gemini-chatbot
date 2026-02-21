@@ -28,17 +28,21 @@ export class GeminiAPI {
         if (!this.isConfigured) return "번역 데모: " + text;
         const prompt = `Translate the following English text into natural, conversational ${targetLang}: "${text}"\nOnly provide the translation, no explanations.`;
         try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.effectiveApiKey}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.effectiveApiKey}`;
             const body = {
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
                 generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
             };
-            const res = await fetch(url, { method: 'POST', body: JSON.stringify(body) });
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
             const data = await res.json();
-            return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "번역 실패";
+            return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "번역 실패 (데이터 없음)";
         } catch (e) {
             console.error('Translation error:', e);
-            return "번역 오류";
+            return "번역 오류 (연결 실패)";
         }
     }
 
