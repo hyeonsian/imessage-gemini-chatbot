@@ -58,8 +58,24 @@ self.addEventListener('push', (event) => {
         },
     };
 
+    // Broadcast to all open windows and show notification
     event.waitUntil(
-        self.registration.showNotification(data.title || 'AI Assistant', options)
+        Promise.all([
+            self.registration.showNotification(data.title || 'AI Assistant', options),
+            self.clients.matchAll({ type: 'window' }).then(clients => {
+                clients.forEach(client => {
+                    client.postMessage({
+                        type: 'PUSH_MESSAGE',
+                        text: data.body,
+                        time: new Intl.DateTimeFormat('ko-KR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true,
+                        }).format(new Date())
+                    });
+                });
+            })
+        ])
     );
 });
 

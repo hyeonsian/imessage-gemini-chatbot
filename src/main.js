@@ -35,9 +35,35 @@ function init() {
   loadSettings();
   setupEventListeners();
   updateStatus();
+  registerServiceWorker();
 
   if (messages.length === 0) {
     showWelcomeMessage();
+  }
+
+  // Listen for messages from Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'PUSH_MESSAGE') {
+        const { text, time } = event.data;
+        const aiMsg = { role: 'ai', text, time };
+        messages.push(aiMsg);
+        appendMessageBubble('ai', text, time);
+        saveMessages();
+        scrollToBottom();
+      }
+    });
+  }
+}
+
+async function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log('Service Worker registered with scope:', registration.scope);
+    } catch (error) {
+      console.error('Service Worker registration failed:', error);
+    }
   }
 }
 
