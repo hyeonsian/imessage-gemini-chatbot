@@ -88,6 +88,8 @@ Rules:
 - If there is no grammar issue, set hasErrors=false and edits=[].
 - Keep the original meaning and tone.
 - Focus on grammar/natural phrasing, not style preference.
+- Do NOT flag capitalization-only changes.
+- Do NOT flag missing/extra sentence-ending punctuation (., !, ?).
 
 Sentence:
 "${text}"`;
@@ -117,21 +119,24 @@ Sentence:
 
             const parsed = this._parseJsonSafely(raw);
             const edits = Array.isArray(parsed?.edits) ? parsed.edits : [];
-            const hasErrors = Boolean(parsed?.hasErrors) && edits.length > 0;
+            const normalizedEdits = edits
+                .filter((edit) => edit && typeof edit.wrong === 'string' && typeof edit.right === 'string')
+                .map((edit) => ({
+                    wrong: edit.wrong.trim(),
+                    right: edit.right.trim(),
+                    reason: typeof edit.reason === 'string' ? edit.reason.trim() : ''
+                }))
+                .filter((edit) => !this._isMinorGrammarEdit(edit.wrong, edit.right));
+
+            const hasErrors = Boolean(parsed?.hasErrors) && normalizedEdits.length > 0;
             const correctedText = typeof parsed?.correctedText === 'string' && parsed.correctedText.trim()
                 ? parsed.correctedText.trim()
                 : text;
 
             return {
                 hasErrors,
-                correctedText,
-                edits: edits
-                    .filter((edit) => edit && typeof edit.wrong === 'string' && typeof edit.right === 'string')
-                    .map((edit) => ({
-                        wrong: edit.wrong.trim(),
-                        right: edit.right.trim(),
-                        reason: typeof edit.reason === 'string' ? edit.reason.trim() : ''
-                    }))
+                correctedText: hasErrors ? correctedText : text,
+                edits: normalizedEdits
             };
         } catch (error) {
             console.error('Grammar check error:', error);
@@ -304,6 +309,20 @@ Sentence:
                 throw new Error('Invalid JSON payload');
             }
         }
+    }
+
+    _isMinorGrammarEdit(wrong, right) {
+        if (!wrong || !right) return false;
+        if (wrong === right) return false;
+
+        const stripEndPunctuation = (value) =>
+            value.trim().replace(/[.!?]+$/g, '').trim();
+
+        const wrongCore = stripEndPunctuation(wrong);
+        const rightCore = stripEndPunctuation(right);
+
+        // Ignore edits that are only casing differences and/or sentence-ending punctuation.
+        return wrongCore.toLowerCase() === rightCore.toLowerCase();
     }
 
     _getDemoResponse() {
