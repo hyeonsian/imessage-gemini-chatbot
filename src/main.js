@@ -379,14 +379,6 @@ async function requestNotificationPermission(manual = false) {
     return 'error';
   }
 }
-const permission = await Notification.requestPermission();
-if (permission === 'granted') {
-  subscribeUserToPush();
-}
-  } else if (Notification.permission === 'granted') {
-  subscribeUserToPush();
-}
-}
 
 async function subscribeUserToPush() {
   try {
@@ -394,10 +386,14 @@ async function subscribeUserToPush() {
 
     // Check for existing subscription
     const existingSubscription = await registration.pushManager.getSubscription();
-    if (existingSubscription) return;
+    if (existingSubscription) {
+      console.log('Already subscribed to push.');
+      return;
+    }
 
     if (!VAPID_PUBLIC_KEY) {
-      console.warn('VAPID Public Key missing. Push subscription skipped.');
+      console.error('VAPID Public Key missing (VITE_VAPID_PUBLIC_KEY). Please check Vercel Env Vars.');
+      showToast('서버 설정(VAPID Key)이 누락되었습니다.');
       return;
     }
 
@@ -407,15 +403,18 @@ async function subscribeUserToPush() {
     });
 
     // Send subscription to server
-    await fetch('/api/push', {
+    const response = await fetch('/api/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(subscription)
     });
 
+    if (!response.ok) throw new Error('Failed to register subscription on server');
+
     console.log('Successfully subscribed to Web Push');
   } catch (error) {
     console.error('Failed to subscribe to Web Push:', error);
+    showToast('알림 등록에 실패했습니다.');
   }
 }
 
