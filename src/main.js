@@ -129,133 +129,101 @@ function appendMessageBubble(role, text, time, animate = true) {
   msgDiv.appendChild(bubble);
   msgDiv.appendChild(timeEl);
   chatMessages.appendChild(msgDiv);
+
+  if (animate) scrollToBottom();
 }
 
 function formatMessage(text) {
-  // Simple markdown parsing
-  let html = escapeHtml(text);
-
-  // Code blocks
-  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  // Bold
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-  // Italic
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-  // Line breaks
-  html = html.replace(/\n/g, '<br>');
-
-  return html;
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  // Simple markdown-to-html (paragraphs, bold,-lists)
+  return text
+    .replace(/\r\n|\r|\n/g, '<br>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^\- (.*)/gm, '• $1');
 }
 
 function formatTime(date) {
-  return date.toLocaleTimeString('ko-KR', {
+  return new Intl.DateTimeFormat('ko-KR', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
-  });
+  }).format(date);
 }
 
 function scrollToBottom() {
-  requestAnimationFrame(() => {
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+  chatMessages.scrollTo({
+    top: chatMessages.scrollHeight,
+    behavior: 'smooth'
   });
 }
 
 // ===========================
-// Typing Indicator
-// ===========================
-function showTypingIndicator() {
-  const existing = document.getElementById('typingMsg');
-  if (existing) return;
-
-  const typingDiv = document.createElement('div');
-  typingDiv.className = 'message received';
-  typingDiv.id = 'typingMsg';
-  typingDiv.innerHTML = `
-    <div class="typing-indicator">
-      <div class="dot"></div>
-      <div class="dot"></div>
-      <div class="dot"></div>
-    </div>
-  `;
-  chatMessages.appendChild(typingDiv);
-  scrollToBottom();
-}
-
-function hideTypingIndicator() {
-  const el = document.getElementById('typingMsg');
-  if (el) el.remove();
-}
-
-// ===========================
-// Send Message
+// Chat Logic
 // ===========================
 async function sendMessage() {
   const text = messageInput.value.trim();
   if (!text || isProcessing) return;
 
-  // Remove welcome message if present
-  const welcome = document.getElementById('welcomeMsg');
-  if (welcome) welcome.remove();
-
-  isProcessing = true;
+  // Add user message to state
   const time = formatTime(new Date());
+  messages.push({ role: 'user', text, time });
 
-  // Add user message
-  const userMsg = { role: 'user', text, time };
-  messages.push(userMsg);
+  // UI updates
+  removeWelcomeMessage();
   appendMessageBubble('user', text, time);
-  saveMessages();
-  scrollToBottom();
-
-  // Try to enable Push Notifications after first message
-  if (messages.length === 1 || messages.length === 2) {
-    requestNotificationPermission();
-  }
-
-  // Clear input
   messageInput.value = '';
   messageInput.style.height = 'auto';
   updateSendButton();
+  saveMessages();
 
-  // Show typing indicator
-  contactStatus.textContent = '입력 중...';
-  showTypingIndicator();
+  // API Call
+  isProcessing = true;
+  const typingIndicator = showTypingIndicator();
 
   try {
     const response = await gemini.sendMessage(text);
-    hideTypingIndicator();
+    removeTypingIndicator(typingIndicator);
 
     const aiTime = formatTime(new Date());
-    const aiMsg = { role: 'ai', text: response, time: aiTime };
-    messages.push(aiMsg);
+    messages.push({ role: 'ai', text: response, time: aiTime });
     appendMessageBubble('ai', response, aiTime);
     saveMessages();
-    scrollToBottom();
+
+    // Notification request after first message
+    if (messages.length === 2) {
+      setTimeout(() => requestNotificationPermission(), 1000);
+    }
   } catch (error) {
-    hideTypingIndicator();
-    showToast(error.message);
+    removeTypingIndicator(typingIndicator);
+    appendMessageBubble('system', `에러가 발생했습니다: ${error.message}`, formatTime(new Date()));
   } finally {
     isProcessing = false;
-    updateStatus();
   }
 }
 
-// ===========================
-// Storage
-// ===========================
+function removeWelcomeMessage() {
+  const welcome = document.getElementById('welcomeMsg');
+  if (welcome) welcome.remove();
+}
+
+function showTypingIndicator() {
+  const indicator = document.createElement('div');
+  indicator.className = 'message received typing';
+  indicator.innerHTML = `
+    <div class="bubble">
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+    </div>
+  `;
+  chatMessages.appendChild(indicator);
+  scrollToBottom();
+  return indicator;
+}
+
+function removeTypingIndicator(indicator) {
+  if (indicator) indicator.remove();
+}
+
 function saveMessages() {
   localStorage.setItem('chat_messages', JSON.stringify(messages));
 }
@@ -263,24 +231,6 @@ function saveMessages() {
 function loadSettings() {
   modelSelect.value = gemini.model;
   systemPrompt.value = gemini.systemPrompt;
-}
-
-// ===========================
-// Toast
-// ===========================
-function showToast(message) {
-  let toast = document.querySelector('.toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.className = 'toast';
-    document.body.appendChild(toast);
-  }
-  toast.textContent = message;
-  toast.classList.add('show');
-
-  setTimeout(() => {
-    toast.classList.remove('show');
-  }, 3000);
 }
 
 // ===========================
@@ -353,133 +303,135 @@ function setupEventListeners() {
       showWelcomeMessage();
       showToast('새 대화가 시작되었습니다');
     }
-    // Enable Notifications button
-    if (enableNotifications) {
-      enableNotifications.addEventListener('click', async () => {
-        const result = await requestNotificationPermission(true);
-        if (result === 'granted') {
-          showToast('알림 권한이 승인되었습니다! 🎉');
-        } else if (result === 'denied') {
-          showToast('알림 권한이 거부되었습니다. 설정에서 변경해주세요.');
-        } else if (result === 'unsupported') {
-          showToast('이 브라우저는 알림을 지원하지 않습니다.');
-        }
-      });
-    }
+  });
 
-    // Test Push button
-    if (testPushBtn) {
-      testPushBtn.addEventListener('click', async () => {
-        showToast('테스트 메시지를 요청 중...');
-        try {
-          const response = await fetch('/api/cron?test=true');
-          const data = await response.json();
-          if (data.success) {
-            showToast('잠시 후 메시지가 도착합니다! 📩');
-          } else {
-            showToast(`실패: ${data.skipped || data.error || '알 수 없는 오류'}`);
-          }
-        } catch (err) {
-          showToast('서버 연결 실패');
-        }
-      });
-    }
+  // Enable Notifications button
+  if (enableNotifications) {
+    enableNotifications.addEventListener('click', async () => {
+      const result = await requestNotificationPermission(true);
+      if (result === 'granted') {
+        showToast('알림 권한이 승인되었습니다! 🎉');
+      } else if (result === 'denied') {
+        showToast('알림 권한이 거부되었습니다. 설정에서 변경해주세요.');
+      } else if (result === 'unsupported') {
+        showToast('이 브라우저는 알림을 지원하지 않습니다.');
+      }
+    });
   }
 
+  // Test Push button
+  if (testPushBtn) {
+    testPushBtn.addEventListener('click', async () => {
+      showToast('테스트 메시지를 요청 중...');
+      try {
+        const response = await fetch('/api/cron?test=true');
+        const data = await response.json();
+        if (data.success) {
+          showToast('잠시 후 메시지가 도착합니다! 📩');
+        } else {
+          showToast(`실패: ${data.skipped || data.error || '알 수 없는 오류'}`);
+        }
+      } catch (err) {
+        showToast('서버 연결 실패');
+      }
+    });
+  }
+}
+
 function updateSendButton() {
-      sendBtn.disabled = messageInput.value.trim().length === 0;
-    }
+  sendBtn.disabled = messageInput.value.trim().length === 0;
+}
 
 // Push Notifications
 // ===========================
 async function requestNotificationPermission(manual = false) {
-      if (!('serviceWorker' in navigator)) {
-        console.warn('Service Worker not supported');
-        return 'unsupported';
-      }
+  if (!('serviceWorker' in navigator)) {
+    console.warn('Service Worker not supported');
+    return 'unsupported';
+  }
 
-      // On iOS PWA, Notification might be available but 'Notification' in window might be false in some contexts
-      // or PushManager might be the primary way to check.
-      const hasNotification = 'Notification' in window;
-      const hasPush = 'PushManager' in window;
+  // On iOS PWA, Notification might be available but 'Notification' in window might be false in some contexts
+  // or PushManager might be the primary way to check.
+  const hasNotification = 'Notification' in window;
+  const hasPush = 'PushManager' in window;
 
-      if (!hasNotification && !hasPush) {
-        console.warn('Neither Notification nor PushManager supported');
-        return 'unsupported';
-      }
+  if (!hasNotification && !hasPush) {
+    console.warn('Neither Notification nor PushManager supported');
+    return 'unsupported';
+  }
 
-      try {
-        if (Notification.permission === 'default') {
-          const permission = await Notification.requestPermission();
-          if (permission === 'granted') {
-            await subscribeUserToPush();
-            return 'granted';
-          }
-          return permission;
-        } else if (Notification.permission === 'granted') {
-          await subscribeUserToPush();
-          return 'granted';
-        }
-        return Notification.permission;
-      } catch (err) {
-        console.error('Error requesting notification permission:', err);
-        if (manual) showToast('알림 요청 중 오류가 발생했습니다.');
-        return 'error';
+  try {
+    if (Notification.permission === 'default') {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        await subscribeUserToPush();
+        return 'granted';
       }
+      return permission;
+    } else if (Notification.permission === 'granted') {
+      await subscribeUserToPush();
+      return 'granted';
     }
+    return Notification.permission;
+  } catch (err) {
+    console.error('Error requesting notification permission:', err);
+    if (manual) showToast('알림 요청 중 오류가 발생했습니다.');
+    return 'error';
+  }
+}
 
 async function subscribeUserToPush() {
-      try {
-        const registration = await navigator.serviceWorker.ready;
+  try {
+    const registration = await navigator.serviceWorker.ready;
 
-        // Check for existing subscription
-        const existingSubscription = await registration.pushManager.getSubscription();
-        if (existingSubscription) {
-          console.log('Already subscribed to push.');
-          return;
-        }
-
-        if (!VAPID_PUBLIC_KEY) {
-          console.error('VAPID Public Key missing (VITE_VAPID_PUBLIC_KEY). Please check Vercel Env Vars.');
-          showToast('서버 설정(VAPID Key)이 누락되었습니다.');
-          return;
-        }
-
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-        });
-
-        // Send subscription to server
-        const response = await fetch('/api/push', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(subscription)
-        });
-
-        if (!response.ok) throw new Error('Failed to register subscription on server');
-
-        console.log('Successfully subscribed to Web Push');
-      } catch (error) {
-        console.error('Failed to subscribe to Web Push:', error);
-        showToast('알림 등록에 실패했습니다.');
-      }
+    // Check for existing subscription
+    const existingSubscription = await registration.pushManager.getSubscription();
+    if (existingSubscription) {
+      console.log('Already subscribed to push.');
+      return;
     }
+
+    if (!VAPID_PUBLIC_KEY) {
+      console.error('VAPID Public Key missing (VITE_VAPID_PUBLIC_KEY). Please check Vercel Env Vars.');
+      showToast('서버 설정(VAPID Key)이 누락되었습니다.');
+      return;
+    }
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+
+    // Send subscription to server
+    const response = await fetch('/api/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription)
+    });
+
+    if (!response.ok) throw new Error('Failed to register subscription on server');
+
+    console.log('Successfully subscribed to Web Push');
+  } catch (error) {
+    console.error('Failed to subscribe to Web Push:', error);
+    showToast('알림 등록에 실패했습니다.');
+  }
+}
 
 function urlBase64ToUint8Array(base64String) {
-      const padding = '='.repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding)
-        .replace(/-/g, '+')
-        .replace(/_/g, '/');
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
 
-      const rawData = window.atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
 
-      for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-      }
-      return outputArray;
-    }
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 // ===========================
 // Start
