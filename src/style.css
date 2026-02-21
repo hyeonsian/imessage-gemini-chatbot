@@ -272,8 +272,10 @@ body {
 /* Message Bubble */
 .message {
   display: flex;
-  margin-bottom: 3px;
+  margin-bottom: 12px;
+  /* Increased from 3px for better readability */
   animation: messageIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
 }
 
 .message.sent {
@@ -286,12 +288,22 @@ body {
 
 .bubble {
   max-width: 75%;
-  padding: 9px 14px;
+  padding: 10px 16px;
   font-size: 16px;
-  line-height: 1.4;
+  line-height: 1.5;
   word-wrap: break-word;
   overflow-wrap: break-word;
   position: relative;
+  transition: filter 0.4s ease, opacity 0.3s ease, transform 0.3s ease;
+  cursor: pointer;
+  /* Interactive for translation */
+}
+
+/* Blur effect for translation transition */
+.bubble.translating {
+  filter: blur(8px);
+  opacity: 0.7;
+  transform: scale(0.98);
 }
 
 .message.sent .bubble {
@@ -306,67 +318,34 @@ body {
   border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) 4px;
 }
 
-/* Consecutive messages from same sender */
+/* Consecutive messages - keeping some tight grouping but with a bit more space */
 .message.sent+.message.sent {
-  margin-top: 0;
+  margin-top: -8px;
+  /* Slightly tighter for consecutive, but overall more space */
 }
 
 .message.sent+.message.sent .bubble {
   border-radius: var(--radius-bubble) 4px 4px var(--radius-bubble);
 }
 
-.message.sent:has(+ .message.sent) .bubble {
-  border-radius: var(--radius-bubble) var(--radius-bubble) 4px var(--radius-bubble);
+.message.received+.message.received {
+  margin-top: -8px;
 }
 
 .message.received+.message.received .bubble {
   border-radius: 4px var(--radius-bubble) var(--radius-bubble) 4px;
 }
 
-.message.received:has(+ .message.received) .bubble {
-  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) 4px;
-}
-
-/* Last bubble in a group gets a tail shape */
-.message.sent:not(:has(+ .message.sent)) .bubble {
-  border-radius: var(--radius-bubble) 4px var(--radius-bubble) var(--radius-bubble);
-}
-
-.message.received:not(:has(+ .message.received)) .bubble {
-  border-radius: 4px var(--radius-bubble) var(--radius-bubble) var(--radius-bubble);
-}
-
-/* Time stamp */
-.message-time {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  margin-top: 4px;
-  padding: 0 4px;
-  display: none;
-}
-
-.message:not(:has(+ .message.sent)).sent .message-time,
-.message:not(:has(+ .message.received)).received .message-time {
-  display: block;
-}
-
-.message.sent .message-time {
-  text-align: right;
-}
-
-.message.received .message-time {
-  text-align: left;
-}
-
 /* Typing Indicator */
 .typing-indicator {
   display: flex;
   align-items: center;
-  padding: 14px 18px;
+  padding: 12px 18px;
   background: var(--bubble-received-bg);
   border-radius: var(--radius-bubble);
   width: fit-content;
   gap: 5px;
+  margin-bottom: 12px;
 }
 
 .typing-indicator .dot {

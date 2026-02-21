@@ -140,7 +140,7 @@ function renderMessages() {
   scrollToBottom();
 }
 
-function appendMessageBubble(role, text, time, animate = true) {
+function appendMessageBubble(role, text, time, animate = true, translation = null) {
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${role === 'user' ? 'sent' : 'received'}`;
   if (!animate) msgDiv.style.animation = 'none';
@@ -148,6 +148,39 @@ function appendMessageBubble(role, text, time, animate = true) {
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   bubble.innerHTML = formatMessage(text);
+
+  // Add click listener for AI messages to translate
+  if (role === 'ai') {
+    bubble.dataset.original = text;
+    bubble.dataset.translated = translation || '';
+
+    bubble.addEventListener('click', async () => {
+      // Toggle transition with blur
+      bubble.classList.add('translating');
+
+      setTimeout(async () => {
+        const isTranslated = bubble.classList.contains('is-translated');
+
+        if (isTranslated) {
+          // Restore to English
+          bubble.innerHTML = formatMessage(bubble.dataset.original);
+          bubble.classList.remove('is-translated');
+        } else {
+          // Show translation
+          let translatedText = bubble.dataset.translated;
+          if (!translatedText) {
+            // Fallback if pre-translation failed or wasn't ready
+            translatedText = await gemini.translate(bubble.dataset.original);
+            bubble.dataset.translated = translatedText;
+          }
+          bubble.innerHTML = formatMessage(translatedText);
+          bubble.classList.add('is-translated');
+        }
+
+        bubble.classList.remove('translating');
+      }, 400); // Match CSS transition timing
+    });
+  }
 
   const timeEl = document.createElement('div');
   timeEl.className = 'message-time';
@@ -227,8 +260,12 @@ async function sendMessage() {
     removeTypingIndicator(typingIndicator);
 
     const aiTime = formatTime(new Date());
-    messages.push({ role: 'ai', text: response, time: aiTime });
-    appendMessageBubble('ai', response, aiTime);
+
+    // Pre-translate for instant tap response
+    const translation = await gemini.translate(response);
+
+    messages.push({ role: 'ai', text: response, time: aiTime, translation });
+    appendMessageBubble('ai', response, aiTime, true, translation);
     saveMessages();
 
     // Notification request after first message
@@ -250,13 +287,11 @@ function removeWelcomeMessage() {
 
 function showTypingIndicator() {
   const indicator = document.createElement('div');
-  indicator.className = 'message received typing';
+  indicator.className = 'typing-indicator';
   indicator.innerHTML = `
-    <div class="bubble">
-      <div class="typing-dot"></div>
-      <div class="typing-dot"></div>
-      <div class="typing-dot"></div>
-    </div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
   `;
   chatMessages.appendChild(indicator);
   scrollToBottom();

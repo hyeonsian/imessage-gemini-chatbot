@@ -20,8 +20,26 @@ export class GeminiAPI {
         this.apiKey = localStorage.getItem('gemini_api_key') || '';
         this.model = localStorage.getItem('gemini_model') || 'gemini-3-flash-preview';
         this.systemPrompt = localStorage.getItem('gemini_system_prompt') ||
-            '당신은 친절하고 도움이 되는 AI 어시스턴트입니다. 한국어로 대화합니다.';
+            'You are a friendly and helpful AI English tutor. ALWAYS respond ONLY in natural, conversational English. Never use Korean in your responses unless specifically asked to translate a word.';
         this.conversationHistory = [];
+    }
+
+    async translate(text, targetLang = 'Korean') {
+        if (!this.isConfigured) return "번역 데모: " + text;
+        const prompt = `Translate the following English text into natural, conversational ${targetLang}: "${text}"\nOnly provide the translation, no explanations.`;
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.effectiveApiKey}`;
+            const body = {
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+            };
+            const res = await fetch(url, { method: 'POST', body: JSON.stringify(body) });
+            const data = await res.json();
+            return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "번역 실패";
+        } catch (e) {
+            console.error('Translation error:', e);
+            return "번역 오류";
+        }
     }
 
     get isConfigured() {
