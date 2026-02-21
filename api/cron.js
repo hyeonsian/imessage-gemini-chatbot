@@ -32,32 +32,41 @@ export default async function handler(req, res) {
 
         // 4. Send to all subscribers
         const subKeys = await kv.smembers('subscriptions');
+        const totalSubscriptions = subKeys.length;
         const results = [];
+
+        console.log(`Found ${totalSubscriptions} subscriptions`);
 
         for (const key of subKeys) {
             const sub = await kv.get(key);
             if (sub) {
                 try {
-                    await webpush.sendNotification(JSON.parse(sub), JSON.stringify({
+                    await webpush.sendNotification(typeof sub === 'string' ? JSON.parse(sub) : sub, JSON.stringify({
                         title: 'AI Friend',
                         body: message
                     }));
                     results.push({ key, status: 'success' });
                 } catch (err) {
-                    if (err.statusCode === 410) {
-                        // Subscription expired, remove it
+                    console.error(`Error sending to ${key}:`, err);
+                    if (err.statusCode === 410 || err.statusCode === 404) {
+                        // Subscription expired or not found, remove it
                         await kv.srem('subscriptions', key);
                         await kv.del(key);
                     }
-                    results.push({ key, status: 'failed', error: err.message });
+                    results.push({ key, status: 'failed', error: err.message, code: err.statusCode });
                 }
             }
         }
 
-        return res.status(200).json({ success: true, message, results });
+        return res.status(200).json({
+            success: true,
+            message,
+            totalSubscriptions,
+            results
+        });
     } catch (error) {
         console.error('Cron job error:', error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: error.message, stack: error.stack });
     }
 }
 
