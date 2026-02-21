@@ -24,6 +24,8 @@ const clearChat = document.getElementById('clearChat');
 const clearBtn = document.getElementById('clearBtn');
 const contactStatus = document.getElementById('contactStatus');
 
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+
 // ===========================
 // Initialize
 // ===========================
@@ -190,6 +192,11 @@ async function sendMessage() {
   saveMessages();
   scrollToBottom();
 
+  // Try to enable Push Notifications after first message
+  if (messages.length === 1 || messages.length === 2) {
+    requestNotificationPermission();
+  }
+
   // Clear input
   messageInput.value = '';
   messageInput.style.height = 'auto';
@@ -323,6 +330,68 @@ function setupEventListeners() {
 
 function updateSendButton() {
   sendBtn.disabled = messageInput.value.trim().length === 0;
+}
+
+// ===========================
+// Push Notifications
+// ===========================
+async function requestNotificationPermission() {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+
+  if (Notification.permission === 'default') {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      subscribeUserToPush();
+    }
+  } else if (Notification.permission === 'granted') {
+    subscribeUserToPush();
+  }
+}
+
+async function subscribeUserToPush() {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+
+    // Check for existing subscription
+    const existingSubscription = await registration.pushManager.getSubscription();
+    if (existingSubscription) return;
+
+    if (!VAPID_PUBLIC_KEY) {
+      console.warn('VAPID Public Key missing. Push subscription skipped.');
+      return;
+    }
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+
+    // Send subscription to server
+    await fetch('/api/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription)
+    });
+
+    console.log('Successfully subscribed to Web Push');
+  } catch (error) {
+    console.error('Failed to subscribe to Web Push:', error);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
 
 // ===========================
