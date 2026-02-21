@@ -23,6 +23,7 @@ const saveSettings = document.getElementById('saveSettings');
 const clearChat = document.getElementById('clearChat');
 const clearBtn = document.getElementById('clearBtn');
 const contactStatus = document.getElementById('contactStatus');
+const enableNotifications = document.getElementById('enableNotifications');
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
@@ -326,26 +327,65 @@ function setupEventListeners() {
       showToast('새 대화가 시작되었습니다');
     }
   });
+
+  // Enable Notifications button
+  if (enableNotifications) {
+    enableNotifications.addEventListener('click', async () => {
+      const result = await requestNotificationPermission(true);
+      if (result === 'granted') {
+        showToast('알림 권한이 승인되었습니다! 🎉');
+      } else if (result === 'denied') {
+        showToast('알림 권한이 거부되었습니다. 설정에서 변경해주세요.');
+      } else if (result === 'unsupported') {
+        showToast('이 브라우저는 알림을 지원하지 않습니다.');
+      }
+    });
+  }
 }
 
 function updateSendButton() {
   sendBtn.disabled = messageInput.value.trim().length === 0;
 }
 
-// ===========================
 // Push Notifications
 // ===========================
-async function requestNotificationPermission() {
-  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
-
-  if (Notification.permission === 'default') {
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      subscribeUserToPush();
-    }
-  } else if (Notification.permission === 'granted') {
-    subscribeUserToPush();
+async function requestNotificationPermission(manual = false) {
+  if (!('Notification' in window)) {
+    console.warn('Notifications not supported in this browser.');
+    return 'unsupported';
   }
+
+  if (!('serviceWorker' in navigator)) {
+    console.warn('Service Worker not supported or not ready.');
+    return 'unsupported';
+  }
+
+  try {
+    if (Notification.permission === 'default') {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        await subscribeUserToPush();
+        return 'granted';
+      }
+      return permission;
+    } else if (Notification.permission === 'granted') {
+      await subscribeUserToPush();
+      return 'granted';
+    }
+    return Notification.permission;
+  } catch (err) {
+    console.error('Error requesting notification permission:', err);
+    if (manual) showToast('알림 요청 중 오류가 발생했습니다.');
+    return 'error';
+  }
+}
+const permission = await Notification.requestPermission();
+if (permission === 'granted') {
+  subscribeUserToPush();
+}
+  } else if (Notification.permission === 'granted') {
+  subscribeUserToPush();
+}
 }
 
 async function subscribeUserToPush() {

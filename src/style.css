@@ -701,6 +701,29 @@ body {
   transform: scale(0.98);
 }
 
+.secondary-btn {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  color: var(--accent);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-family);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.secondary-btn:hover {
+  background: var(--bg-primary);
+  border-color: var(--accent);
+}
+
 .danger-btn {
   width: 100%;
   padding: 14px;
