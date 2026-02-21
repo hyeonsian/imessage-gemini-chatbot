@@ -8,11 +8,14 @@ import { GeminiAPI } from './gemini.js';
 const gemini = new GeminiAPI();
 
 // Force-update old prompt to new concise prompt for existing users
-const oldDefaultPrompt = 'You are a friendly and helpful AI English tutor. ALWAYS respond ONLY in natural, conversational English. Never use Korean in your responses unless specifically asked to translate a word.';
-const newDefaultPrompt = "You are a close friend and a helpful English tutor. Talk like a real person, not an AI. Keep your responses VERY concise (usually 1-2 sentences). Be casual and friendly. Use natural, conversational English only. Don't be wordy or give long-winded explanations unless specifically asked.";
-if (localStorage.getItem('gemini_system_prompt') === oldDefaultPrompt) {
-  localStorage.setItem('gemini_system_prompt', newDefaultPrompt);
-  gemini.setSystemPrompt(newDefaultPrompt);
+const oldDefaultPrompt1 = 'You are a friendly and helpful AI English tutor. ALWAYS respond ONLY in natural, conversational English. Never use Korean in your responses unless specifically asked to translate a word.';
+const oldDefaultPrompt2 = "You are a close friend and a helpful English tutor. Talk like a real person, not an AI. Keep your responses VERY concise (usually 1-2 sentences). Be casual and friendly. Use natural, conversational English only. Don't be wordy or give long-winded explanations unless specifically asked.";
+const newStrictPrompt = "You are a close friend over text. Talk like a real person, not an AI. CRITICAL: Keep your responses EXTREMELY concise (1-2 short sentences max). Never use multiple paragraphs. No philosophical fluff, no long-winded jokes, no AI-style 'how can I help you' endings. Just answer the question or chat casually like a busy friend.";
+
+const currentPrompt = localStorage.getItem('gemini_system_prompt');
+if (currentPrompt === oldDefaultPrompt1 || currentPrompt === oldDefaultPrompt2) {
+  localStorage.setItem('gemini_system_prompt', newStrictPrompt);
+  gemini.setSystemPrompt(newStrictPrompt);
 }
 
 // State

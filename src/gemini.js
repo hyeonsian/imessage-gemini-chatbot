@@ -20,7 +20,7 @@ export class GeminiAPI {
         this.apiKey = localStorage.getItem('gemini_api_key') || '';
         this.model = localStorage.getItem('gemini_model') || 'gemini-1.5-flash';
         this.systemPrompt = localStorage.getItem('gemini_system_prompt') ||
-            "You are a close friend and a helpful English tutor. Talk like a real person, not an AI. Keep your responses VERY concise (usually 1-2 sentences). Be casual and friendly. Use natural, conversational English only. Don't be wordy or give long-winded explanations unless specifically asked.";
+            "You are a close friend over text. Talk like a real person, not an AI. CRITICAL: Keep your responses EXTREMELY concise (1-2 short sentences max). Never use multiple paragraphs. No philosophical fluff, no long-winded jokes, no AI-style 'how can I help you' endings. Just answer the question or chat casually like a busy friend.";
         this.conversationHistory = [];
     }
 
