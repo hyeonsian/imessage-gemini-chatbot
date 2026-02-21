@@ -262,7 +262,7 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
       bubble.dataset.review = JSON.stringify(messageData.grammarReview);
     }
     if (messageData?.grammarReview?.checked && !messageData?.grammarReview?.hasErrors) {
-      appendGrammarOkIndicator(msgDiv);
+      appendGrammarOkIndicator(bubble);
     }
 
     bubble.addEventListener('click', async () => {
@@ -308,11 +308,11 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
           bubble.classList.add('is-reviewed');
           bubble.classList.add('has-grammar-errors');
           bubble.classList.remove('grammar-ok');
-          removeGrammarOkIndicator(msgDiv);
+          removeGrammarOkIndicator(bubble);
         } else {
           bubble.classList.remove('has-grammar-errors');
           bubble.classList.add('grammar-ok');
-          appendGrammarOkIndicator(msgDiv);
+          appendGrammarOkIndicator(bubble);
           showToast('문법 오류가 없어요 ✓');
         }
 
@@ -368,16 +368,16 @@ function formatGrammarReview(review) {
   `;
 }
 
-function appendGrammarOkIndicator(messageEl) {
-  if (!messageEl || messageEl.querySelector('.grammar-ok-indicator')) return;
+function appendGrammarOkIndicator(bubbleEl) {
+  if (!bubbleEl || bubbleEl.querySelector('.grammar-ok-indicator')) return;
   const indicator = document.createElement('div');
   indicator.className = 'grammar-ok-indicator';
-  indicator.innerHTML = '<span class="grammar-ok-icon">✓</span><span>문법 이상 없음</span>';
-  messageEl.appendChild(indicator);
+  indicator.innerHTML = '<span class="grammar-ok-icon">✓</span>';
+  bubbleEl.appendChild(indicator);
 }
 
-function removeGrammarOkIndicator(messageEl) {
-  const indicator = messageEl?.querySelector('.grammar-ok-indicator');
+function removeGrammarOkIndicator(bubbleEl) {
+  const indicator = bubbleEl?.querySelector('.grammar-ok-indicator');
   if (indicator) indicator.remove();
 }
 

@@ -414,6 +414,7 @@ body {
 
 .message.sent .bubble.grammar-ok {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25) inset;
+  padding-bottom: 28px;
 }
 
 .grammar-review {
@@ -473,16 +474,14 @@ body {
 }
 
 .grammar-ok-indicator {
-  margin-top: 4px;
-  margin-right: 6px;
-  margin-left: auto;
-  width: fit-content;
-  display: inline-flex;
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
   color: #7ddf9a;
-  opacity: 0.95;
+  opacity: 0.98;
+  pointer-events: none;
 }
 
 .grammar-ok-icon {
