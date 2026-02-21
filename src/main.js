@@ -24,11 +24,19 @@ let isProcessing = false;
 let hasMessageIdChanges = false;
 let nativeSheetRequestId = 0;
 let nativeSheetRefs = null;
+let backSwipeState = {
+  tracking: false,
+  active: false,
+  startX: 0,
+  startY: 0,
+  deltaX: 0,
+};
 
 // ===========================
 // DOM Elements
 // ===========================
 const chatMessages = document.getElementById('chatMessages');
+const appRoot = document.getElementById('app');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const settingsBtn = document.getElementById('settingsBtn');
@@ -104,6 +112,7 @@ function init() {
   renderMessages();
   loadSettings();
   setupEventListeners();
+  setupBackSwipeGesture();
   updateStatus();
   updateAIProfileUI();
   registerServiceWorker();
@@ -896,6 +905,88 @@ function openConversationList() {
 function closeConversationList() {
   if (conversationListView) conversationListView.classList.remove('active');
   document.body.classList.remove('conversation-list-open');
+}
+
+function setupBackSwipeGesture() {
+  if (!appRoot) return;
+
+  const EDGE_START_PX = 28;
+  const ACTIVATE_DX = 14;
+  const TRIGGER_DX = 84;
+  const MAX_SHIFT = 72;
+
+  const resetVisual = (animated = true) => {
+    if (!appRoot) return;
+    if (animated) {
+      appRoot.style.transition = 'transform 0.2s ease';
+      appRoot.style.transform = 'translateX(0)';
+      window.setTimeout(() => {
+        appRoot.style.transition = '';
+      }, 220);
+      return;
+    }
+    appRoot.style.transition = '';
+    appRoot.style.transform = 'translateX(0)';
+  };
+
+  const isBlockedByModal = () => {
+    if (conversationListView?.classList.contains('active')) return true;
+    if (settingsModal?.classList.contains('active')) return true;
+    if (profileModal?.classList.contains('active')) return true;
+    if (nativeSheetRefs?.overlay?.classList.contains('active')) return true;
+    return false;
+  };
+
+  const endGesture = (openList = false) => {
+    const shouldOpen = openList && backSwipeState.active && backSwipeState.deltaX >= TRIGGER_DX;
+    backSwipeState = { tracking: false, active: false, startX: 0, startY: 0, deltaX: 0 };
+    resetVisual(true);
+    if (shouldOpen) {
+      window.setTimeout(() => openConversationList(), 100);
+    }
+  };
+
+  appRoot.addEventListener('touchstart', (event) => {
+    if (isBlockedByModal()) return;
+    if (!event.touches || event.touches.length !== 1) return;
+
+    const touch = event.touches[0];
+    if (touch.clientX > EDGE_START_PX) return;
+
+    backSwipeState.tracking = true;
+    backSwipeState.active = false;
+    backSwipeState.startX = touch.clientX;
+    backSwipeState.startY = touch.clientY;
+    backSwipeState.deltaX = 0;
+  }, { passive: true });
+
+  appRoot.addEventListener('touchmove', (event) => {
+    if (!backSwipeState.tracking || !event.touches || event.touches.length !== 1) return;
+
+    const touch = event.touches[0];
+    const dx = touch.clientX - backSwipeState.startX;
+    const dy = Math.abs(touch.clientY - backSwipeState.startY);
+
+    if (!backSwipeState.active) {
+      if (dy > 16 && dy > Math.abs(dx)) {
+        endGesture(false);
+        return;
+      }
+      if (dx > ACTIVATE_DX && dx > dy * 1.2) {
+        backSwipeState.active = true;
+      }
+    }
+
+    if (!backSwipeState.active) return;
+
+    event.preventDefault();
+    backSwipeState.deltaX = Math.max(0, Math.min(dx, MAX_SHIFT));
+    appRoot.style.transition = 'none';
+    appRoot.style.transform = `translateX(${backSwipeState.deltaX}px)`;
+  }, { passive: false });
+
+  appRoot.addEventListener('touchend', () => endGesture(true), { passive: true });
+  appRoot.addEventListener('touchcancel', () => endGesture(false), { passive: true });
 }
 
 function inputAreaHeightAdjust() {
