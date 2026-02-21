@@ -21,6 +21,7 @@ if (currentPrompt === oldDefaultPrompt1 || currentPrompt === oldDefaultPrompt2) 
 // State
 let messages = JSON.parse(localStorage.getItem('chat_messages') || '[]');
 let isProcessing = false;
+let hasMessageIdChanges = false;
 
 // ===========================
 // DOM Elements
@@ -38,6 +39,7 @@ const clearBtn = document.getElementById('clearBtn');
 const contactName = document.getElementById('contactName');
 const contactStatus = document.getElementById('contactStatus');
 const enableNotifications = document.getElementById('enableNotifications');
+const testPushBtn = document.getElementById('testPushBtn');
 const voiceBtn = document.getElementById('voiceBtn');
 const splash = document.getElementById('splash');
 
@@ -88,6 +90,9 @@ if (SpeechRecognition) {
 // Initialize
 // ===========================
 function init() {
+  ensureMessageIds();
+  if (hasMessageIdChanges) saveMessages();
+
   renderMessages();
   loadSettings();
   setupEventListeners();
@@ -109,9 +114,9 @@ function init() {
     navigator.serviceWorker.addEventListener('message', (event) => {
       if (event.data && event.data.type === 'PUSH_MESSAGE') {
         const { text, time } = event.data;
-        const aiMsg = { role: 'ai', text, time };
+        const aiMsg = { id: generateMessageId(), role: 'ai', text, time };
         messages.push(aiMsg);
-        appendMessageBubble('ai', text, time);
+        appendMessageBubble('ai', text, time, true, null, messages.length - 1);
         saveMessages();
         scrollToBottom();
       }
@@ -135,7 +140,7 @@ function showWelcomeMessage() {
   welcome.className = 'welcome-msg';
   welcome.id = 'welcomeMsg';
   welcome.innerHTML = `
-  < div class="emoji" >✦</div >
+  <div class="emoji">✦</div>
     <h2>AI Assistant</h2>
     <p>${gemini.isConfigured
       ? 'English Learning Mode.<br>Send a message to start practicing!'
@@ -185,8 +190,6 @@ function getModelName(model) {
   const names = {
     'gemini-3-flash-preview': 'Gemini 3 Flash',
     'gemini-3-pro-preview': 'Gemini 3 Pro',
-    'gemini-1.5-flash': 'Gemini 1.5 Flash',
-    'gemini-1.5-pro': 'Gemini 1.5 Pro',
   };
   return names[model] || model;
 }
@@ -198,14 +201,14 @@ function renderMessages() {
   // Keep date divider
   chatMessages.innerHTML = '<div class="date-divider"><span>오늘</span></div>';
 
-  messages.forEach(msg => {
-    appendMessageBubble(msg.role, msg.text, msg.time, false);
+  messages.forEach((msg, index) => {
+    appendMessageBubble(msg.role, msg.text, msg.time, false, msg.translation || null, index);
   });
 
   scrollToBottom();
 }
 
-function appendMessageBubble(role, text, time, animate = true, translation = null) {
+function appendMessageBubble(role, text, time, animate = true, translation = null, messageIndex = null) {
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${role === 'user' ? 'sent' : 'received'} `;
   if (!animate) msgDiv.style.animation = 'none';
@@ -213,6 +216,9 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   bubble.innerHTML = formatMessage(text);
+  if (messageIndex !== null) {
+    bubble.dataset.messageIndex = String(messageIndex);
+  }
 
   // Add click listener for AI messages to translate
   if (role === 'ai') {
@@ -247,6 +253,74 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
     });
   }
 
+  // Add click listener for user messages to check grammar
+  if (role === 'user') {
+    bubble.dataset.original = text;
+
+    const messageData = messageIndex !== null ? messages[messageIndex] : null;
+    if (messageData?.grammarReview) {
+      bubble.dataset.review = JSON.stringify(messageData.grammarReview);
+    }
+    if (messageData?.grammarReview?.checked && !messageData?.grammarReview?.hasErrors) {
+      appendGrammarOkIndicator(msgDiv);
+    }
+
+    bubble.addEventListener('click', async () => {
+      bubble.classList.add('translating');
+
+      setTimeout(async () => {
+        const isReviewed = bubble.classList.contains('is-reviewed');
+        const index = Number(bubble.dataset.messageIndex);
+        const msg = Number.isNaN(index) ? null : messages[index];
+
+        if (isReviewed) {
+          bubble.innerHTML = formatMessage(bubble.dataset.original);
+          bubble.classList.remove('is-reviewed');
+          bubble.classList.remove('has-grammar-errors');
+          bubble.classList.remove('grammar-ok');
+          bubble.classList.remove('translating');
+          return;
+        }
+
+        let review = null;
+        if (bubble.dataset.review) {
+          try {
+            review = JSON.parse(bubble.dataset.review);
+          } catch (_) {
+            review = null;
+          }
+        }
+
+        if (!review) {
+          review = await gemini.checkGrammar(bubble.dataset.original);
+          if (msg) {
+            msg.grammarReview = { ...review, checked: true };
+            saveMessages();
+          }
+          bubble.dataset.review = JSON.stringify(review);
+        } else if (msg && !msg.grammarReview?.checked) {
+          msg.grammarReview = { ...review, checked: true };
+          saveMessages();
+        }
+
+        if (review.hasErrors) {
+          bubble.innerHTML = formatGrammarReview(review);
+          bubble.classList.add('is-reviewed');
+          bubble.classList.add('has-grammar-errors');
+          bubble.classList.remove('grammar-ok');
+          removeGrammarOkIndicator(msgDiv);
+        } else {
+          bubble.classList.remove('has-grammar-errors');
+          bubble.classList.add('grammar-ok');
+          appendGrammarOkIndicator(msgDiv);
+          showToast('문법 오류가 없어요 ✓');
+        }
+
+        bubble.classList.remove('translating');
+      }, 400);
+    });
+  }
+
   const timeEl = document.createElement('div');
   timeEl.className = 'message-time';
   timeEl.textContent = time || formatTime(new Date());
@@ -264,6 +338,56 @@ function formatMessage(text) {
     .replace(/\r\n|\r|\n/g, '<br>')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/^\- (.*)/gm, '• $1');
+}
+
+function formatGrammarReview(review) {
+  const corrected = escapeHtml(review.correctedText || '');
+  const edits = Array.isArray(review.edits) ? review.edits : [];
+
+  const editsHtml = edits.slice(0, 4).map((edit) => {
+    const wrong = escapeHtml(edit.wrong || '');
+    const right = escapeHtml(edit.right || '');
+    const reason = escapeHtml(edit.reason || '');
+    return `
+      <div class="grammar-edit-row">
+        <span class="grammar-wrong">${wrong}</span>
+        <span class="grammar-arrow">→</span>
+        <span class="grammar-right"><strong>${right}</strong></span>
+      </div>
+      ${reason ? `<div class="grammar-reason">${reason}</div>` : ''}
+    `;
+  }).join('');
+
+  return `
+    <div class="grammar-review">
+      <div class="grammar-title">문법 교정</div>
+      ${editsHtml}
+      <div class="grammar-corrected-label">수정 문장</div>
+      <div class="grammar-corrected-text">${corrected.replace(/\r\n|\r|\n/g, '<br>')}</div>
+    </div>
+  `;
+}
+
+function appendGrammarOkIndicator(messageEl) {
+  if (!messageEl || messageEl.querySelector('.grammar-ok-indicator')) return;
+  const indicator = document.createElement('div');
+  indicator.className = 'grammar-ok-indicator';
+  indicator.innerHTML = '<span class="grammar-ok-icon">✓</span><span>문법 이상 없음</span>';
+  messageEl.appendChild(indicator);
+}
+
+function removeGrammarOkIndicator(messageEl) {
+  const indicator = messageEl?.querySelector('.grammar-ok-indicator');
+  if (indicator) indicator.remove();
+}
+
+function escapeHtml(value) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 function formatTime(date) {
@@ -306,11 +430,11 @@ async function sendMessage() {
 
   // Add user message to state
   const time = formatTime(new Date());
-  messages.push({ role: 'user', text, time });
+  messages.push({ id: generateMessageId(), role: 'user', text, time });
 
   // UI updates
   removeWelcomeMessage();
-  appendMessageBubble('user', text, time);
+  appendMessageBubble('user', text, time, true, null, messages.length - 1);
   messageInput.value = '';
   messageInput.style.height = 'auto';
   updateSendButton();
@@ -329,8 +453,8 @@ async function sendMessage() {
     // Pre-translate for instant tap response
     const translation = await gemini.translate(response);
 
-    messages.push({ role: 'ai', text: response, time: aiTime, translation });
-    appendMessageBubble('ai', response, aiTime, true, translation);
+    messages.push({ id: generateMessageId(), role: 'ai', text: response, time: aiTime, translation });
+    appendMessageBubble('ai', response, aiTime, true, translation, messages.length - 1);
     saveMessages();
 
     // Notification request after first message
@@ -354,7 +478,7 @@ function showTypingIndicator() {
   const indicator = document.createElement('div');
   indicator.className = 'typing-indicator';
   indicator.innerHTML = `
-  < div class="dot" ></div >
+  <div class="dot"></div>
     <div class="dot"></div>
     <div class="dot"></div>
 `;
@@ -369,6 +493,18 @@ function removeTypingIndicator(indicator) {
 
 function saveMessages() {
   localStorage.setItem('chat_messages', JSON.stringify(messages));
+}
+
+function generateMessageId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function ensureMessageIds() {
+  messages = messages.map((message) => {
+    if (message?.id) return message;
+    hasMessageIdChanges = true;
+    return { ...message, id: generateMessageId() };
+  });
 }
 
 function loadSettings() {

@@ -34,7 +34,6 @@ export class GeminiAPI {
             "You are a close friend over text. Talk like a real person, not an AI. CRITICAL: Keep your responses EXTREMELY concise (1-2 short sentences max). ALWAYS respond ONLY in natural English. Never use multiple paragraphs. No philosophical fluff, no long-winded jokes, no AI-style 'how can I help you' endings. Just answer the question or chat casually like a busy friend.";
         this.conversationHistory = [];
 
-        // Migrate stale model values that are no longer supported.
         if (this.model !== savedModel) {
             localStorage.setItem('gemini_model', this.model);
         }
@@ -59,6 +58,88 @@ export class GeminiAPI {
         } catch (e) {
             console.error('Translation error:', e);
             return "번역 오류 (연결 실패)";
+        }
+    }
+
+    async checkGrammar(text) {
+        if (!this.isConfigured) {
+            return {
+                hasErrors: false,
+                correctedText: text,
+                edits: []
+            };
+        }
+
+        const prompt = `You are an English grammar checker for language learners.
+Analyze the user's sentence and return ONLY valid JSON (no markdown, no extra text) in this exact schema:
+{
+  "hasErrors": boolean,
+  "correctedText": "string",
+  "edits": [
+    {
+      "wrong": "string",
+      "right": "string",
+      "reason": "short string"
+    }
+  ]
+}
+Rules:
+- correctedText must be the full corrected sentence.
+- If there is no grammar issue, set hasErrors=false and edits=[].
+- Keep the original meaning and tone.
+- Focus on grammar/natural phrasing, not style preference.
+
+Sentence:
+"${text}"`;
+
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.effectiveApiKey}`;
+            const body = {
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+            };
+
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+
+            const data = await res.json();
+            const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (!raw) {
+                throw new Error('No grammar analysis returned');
+            }
+
+            const parsed = this._parseJsonSafely(raw);
+            const edits = Array.isArray(parsed?.edits) ? parsed.edits : [];
+            const hasErrors = Boolean(parsed?.hasErrors) && edits.length > 0;
+            const correctedText = typeof parsed?.correctedText === 'string' && parsed.correctedText.trim()
+                ? parsed.correctedText.trim()
+                : text;
+
+            return {
+                hasErrors,
+                correctedText,
+                edits: edits
+                    .filter((edit) => edit && typeof edit.wrong === 'string' && typeof edit.right === 'string')
+                    .map((edit) => ({
+                        wrong: edit.wrong.trim(),
+                        right: edit.right.trim(),
+                        reason: typeof edit.reason === 'string' ? edit.reason.trim() : ''
+                    }))
+            };
+        } catch (error) {
+            console.error('Grammar check error:', error);
+            return {
+                hasErrors: false,
+                correctedText: text,
+                edits: []
+            };
         }
     }
 
@@ -161,7 +242,6 @@ export class GeminiAPI {
             });
 
             if (res.ok) {
-                // Persist recovered model when fallback succeeds.
                 if (this.model !== model) {
                     this.model = model;
                     localStorage.setItem('gemini_model', model);
@@ -201,6 +281,29 @@ export class GeminiAPI {
             throw new Error('빈 응답이 반환되었습니다.');
         }
         return text;
+    }
+
+    _parseJsonSafely(text) {
+        const direct = text.trim();
+        try {
+            return JSON.parse(direct);
+        } catch (_) {
+            const withoutFence = direct
+                .replace(/^```json\s*/i, '')
+                .replace(/^```\s*/i, '')
+                .replace(/\s*```$/, '')
+                .trim();
+            try {
+                return JSON.parse(withoutFence);
+            } catch (_) {
+                const start = withoutFence.indexOf('{');
+                const end = withoutFence.lastIndexOf('}');
+                if (start !== -1 && end !== -1 && end > start) {
+                    return JSON.parse(withoutFence.slice(start, end + 1));
+                }
+                throw new Error('Invalid JSON payload');
+            }
+        }
     }
 
     _getDemoResponse() {
