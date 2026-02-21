@@ -1403,6 +1403,7 @@ body.native-sheet-open {
 
 .dictionary-entry-swipe {
   position: relative;
+  flex: 0 0 auto;
   overflow-x: hidden;
   overflow-y: visible;
   border-radius: 0;
