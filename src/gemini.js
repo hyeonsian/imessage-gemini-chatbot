@@ -14,14 +14,30 @@ const DEMO_RESPONSES = [
     "좋은 아이디어예요! 실현 가능한 방법을 생각해볼게요 💡",
 ];
 
+const DEFAULT_MODEL = 'gemini-3-flash-preview';
+const LEGACY_MODEL_MAP = {
+    'gemini-1.5-flash': DEFAULT_MODEL,
+    'gemini-1.5-pro': 'gemini-3-pro-preview',
+};
+const FALLBACK_MODELS = [
+    'gemini-3-flash-preview',
+    'gemini-3-pro-preview',
+];
+
 export class GeminiAPI {
     constructor() {
         this.envApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
         this.apiKey = localStorage.getItem('gemini_api_key') || '';
-        this.model = localStorage.getItem('gemini_model') || 'gemini-1.5-flash';
+        const savedModel = localStorage.getItem('gemini_model') || DEFAULT_MODEL;
+        this.model = LEGACY_MODEL_MAP[savedModel] || savedModel;
         this.systemPrompt = localStorage.getItem('gemini_system_prompt') ||
             "You are a close friend over text. Talk like a real person, not an AI. CRITICAL: Keep your responses EXTREMELY concise (1-2 short sentences max). ALWAYS respond ONLY in natural English. Never use multiple paragraphs. No philosophical fluff, no long-winded jokes, no AI-style 'how can I help you' endings. Just answer the question or chat casually like a busy friend.";
         this.conversationHistory = [];
+
+        // Migrate stale model values that are no longer supported.
+        if (this.model !== savedModel) {
+            localStorage.setItem('gemini_model', this.model);
+        }
     }
 
     async translate(text, targetLang = 'Korean') {
@@ -46,88 +62,6 @@ export class GeminiAPI {
         }
     }
 
-    async checkGrammar(text) {
-        if (!this.isConfigured) {
-            return {
-                hasErrors: false,
-                correctedText: text,
-                edits: []
-            };
-        }
-
-        const prompt = `You are an English grammar checker for language learners.
-Analyze the user's sentence and return ONLY valid JSON (no markdown, no extra text) in this exact schema:
-{
-  "hasErrors": boolean,
-  "correctedText": "string",
-  "edits": [
-    {
-      "wrong": "string",
-      "right": "string",
-      "reason": "short string"
-    }
-  ]
-}
-Rules:
-- correctedText must be the full corrected sentence.
-- If there is no grammar issue, set hasErrors=false and edits=[].
-- Keep the original meaning and tone.
-- Focus on grammar/natural phrasing, not style preference.
-
-Sentence:
-"${text}"`;
-
-        try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.effectiveApiKey}`;
-            const body = {
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
-            };
-
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
-            }
-
-            const data = await res.json();
-            const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-            if (!raw) {
-                throw new Error('No grammar analysis returned');
-            }
-
-            const parsed = this._parseJsonSafely(raw);
-            const edits = Array.isArray(parsed?.edits) ? parsed.edits : [];
-            const hasErrors = Boolean(parsed?.hasErrors) && edits.length > 0;
-            const correctedText = typeof parsed?.correctedText === 'string' && parsed.correctedText.trim()
-                ? parsed.correctedText.trim()
-                : text;
-
-            return {
-                hasErrors,
-                correctedText,
-                edits: edits
-                    .filter((edit) => edit && typeof edit.wrong === 'string' && typeof edit.right === 'string')
-                    .map((edit) => ({
-                        wrong: edit.wrong.trim(),
-                        right: edit.right.trim(),
-                        reason: typeof edit.reason === 'string' ? edit.reason.trim() : ''
-                    }))
-            };
-        } catch (error) {
-            console.error('Grammar check error:', error);
-            return {
-                hasErrors: false,
-                correctedText: text,
-                edits: []
-            };
-        }
-    }
-
     get isConfigured() {
         return this.envApiKey.length > 0 || this.apiKey.length > 0;
     }
@@ -142,8 +76,8 @@ Sentence:
     }
 
     setModel(model) {
-        this.model = model;
-        localStorage.setItem('gemini_model', model);
+        this.model = LEGACY_MODEL_MAP[model] || model;
+        localStorage.setItem('gemini_model', this.model);
     }
 
     setSystemPrompt(prompt) {
@@ -196,41 +130,60 @@ Sentence:
     }
 
     async _callAPI() {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.effectiveApiKey}`;
+        const tryModels = [this.model, ...FALLBACK_MODELS.filter((m) => m !== this.model)];
+        let lastError = null;
 
-        const body = {
-            contents: this.conversationHistory,
-            systemInstruction: {
-                parts: [{ text: this.systemPrompt }]
-            },
-            generationConfig: {
-                temperature: 0.8,
-                topP: 0.95,
-                topK: 40,
-                maxOutputTokens: 2048,
-            },
-            safetySettings: [
-                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-            ]
-        };
+        for (const model of tryModels) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.effectiveApiKey}`;
+            const body = {
+                contents: this.conversationHistory,
+                systemInstruction: {
+                    parts: [{ text: this.systemPrompt }]
+                },
+                generationConfig: {
+                    temperature: 0.8,
+                    topP: 0.95,
+                    topK: 40,
+                    maxOutputTokens: 2048,
+                },
+                safetySettings: [
+                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+                ]
+            };
 
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
 
-        if (!res.ok) {
+            if (res.ok) {
+                // Persist recovered model when fallback succeeds.
+                if (this.model !== model) {
+                    this.model = model;
+                    localStorage.setItem('gemini_model', model);
+                }
+                return res.json();
+            }
+
             const errorData = await res.json().catch(() => ({}));
             const error = new Error(errorData?.error?.message || `HTTP ${res.status}`);
             error.status = res.status;
-            throw error;
+            lastError = error;
+
+            const canRetryWithNextModel =
+                res.status === 404 ||
+                /not found|not supported|unknown model/i.test(error.message || '');
+
+            if (!canRetryWithNextModel) {
+                throw error;
+            }
         }
 
-        return res.json();
+        throw lastError || new Error('모델 호출에 실패했습니다.');
     }
 
     _extractText(response) {
@@ -248,29 +201,6 @@ Sentence:
             throw new Error('빈 응답이 반환되었습니다.');
         }
         return text;
-    }
-
-    _parseJsonSafely(text) {
-        const direct = text.trim();
-        try {
-            return JSON.parse(direct);
-        } catch (_) {
-            const withoutFence = direct
-                .replace(/^```json\s*/i, '')
-                .replace(/^```\s*/i, '')
-                .replace(/\s*```$/, '')
-                .trim();
-            try {
-                return JSON.parse(withoutFence);
-            } catch (_) {
-                const start = withoutFence.indexOf('{');
-                const end = withoutFence.lastIndexOf('}');
-                if (start !== -1 && end !== -1 && end > start) {
-                    return JSON.parse(withoutFence.slice(start, end + 1));
-                }
-                throw new Error('Invalid JSON payload');
-            }
-        }
     }
 
     _getDemoResponse() {
