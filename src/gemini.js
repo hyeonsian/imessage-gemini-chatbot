@@ -148,6 +148,85 @@ Sentence:
         }
     }
 
+    async getNativeAlternatives(text) {
+        if (!this.isConfigured) {
+            return [
+                { text, tone: 'Neutral', nuance: 'Original expression' },
+                { text: `Maybe: ${text}`, tone: 'Casual', nuance: 'Friendly everyday vibe' },
+                { text: `A cleaner way: ${text}`, tone: 'Natural', nuance: 'Smoother native phrasing' }
+            ];
+        }
+
+        const prompt = `You rewrite English learner sentences into native-sounding alternatives.
+Return ONLY valid JSON (no markdown, no extra text) with this schema:
+{
+  "alternatives": [
+    { "text": "string", "tone": "string", "nuance": "string" },
+    { "text": "string", "tone": "string", "nuance": "string" },
+    { "text": "string", "tone": "string", "nuance": "string" }
+  ]
+}
+Rules:
+- Provide exactly 3 alternatives.
+- Keep the original intent.
+- Each "text" must be natural conversational English.
+- Make each option meaningfully different in tone/nuance.
+- Keep each nuance short (max 12 words).
+
+Sentence:
+"${text}"`;
+
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.effectiveApiKey}`;
+            const body = {
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.4, maxOutputTokens: 1024 }
+            };
+
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+
+            const data = await res.json();
+            const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (!raw) {
+                throw new Error('No native alternatives returned');
+            }
+
+            const parsed = this._parseJsonSafely(raw);
+            const alternatives = Array.isArray(parsed?.alternatives) ? parsed.alternatives : [];
+
+            const normalized = alternatives
+                .filter((item) => item && typeof item.text === 'string')
+                .map((item) => ({
+                    text: item.text.trim(),
+                    tone: typeof item.tone === 'string' && item.tone.trim() ? item.tone.trim() : 'Natural',
+                    nuance: typeof item.nuance === 'string' && item.nuance.trim() ? item.nuance.trim() : 'Natural phrasing'
+                }))
+                .filter((item) => item.text.length > 0)
+                .slice(0, 3);
+
+            if (normalized.length === 3) {
+                return normalized;
+            }
+
+            throw new Error('Insufficient alternatives');
+        } catch (error) {
+            console.error('Native alternatives error:', error);
+            return [
+                { text, tone: 'Neutral', nuance: 'Original expression' },
+                { text: `I mean, ${text}`, tone: 'Casual', nuance: 'Light and friendly' },
+                { text: `A more natural way: ${text}`, tone: 'Natural', nuance: 'Cleaner native flow' }
+            ];
+        }
+    }
+
     get isConfigured() {
         return this.envApiKey.length > 0 || this.apiKey.length > 0;
     }

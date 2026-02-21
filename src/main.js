@@ -22,6 +22,8 @@ if (currentPrompt === oldDefaultPrompt1 || currentPrompt === oldDefaultPrompt2) 
 let messages = JSON.parse(localStorage.getItem('chat_messages') || '[]');
 let isProcessing = false;
 let hasMessageIdChanges = false;
+let nativeSheetRequestId = 0;
+let nativeSheetRefs = null;
 
 // ===========================
 // DOM Elements
@@ -92,6 +94,7 @@ if (SpeechRecognition) {
 function init() {
   ensureMessageIds();
   if (hasMessageIdChanges) saveMessages();
+  ensureNativeAlternativesSheet();
 
   renderMessages();
   loadSettings();
@@ -256,6 +259,7 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
   // Add click listener for user messages to check grammar
   if (role === 'user') {
     bubble.dataset.original = text;
+    setupUserBubbleLongPress(bubble);
 
     const messageData = messageIndex !== null ? messages[messageIndex] : null;
     if (messageData?.grammarReview) {
@@ -420,6 +424,118 @@ function showToast(message) {
   setTimeout(() => {
     toast.classList.remove('show');
   }, 3000);
+}
+
+function setupUserBubbleLongPress(bubble) {
+  const LONG_PRESS_MS = 550;
+  let timer = null;
+  let suppressNextClick = false;
+
+  const clearPressTimer = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  bubble.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+  });
+
+  bubble.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    clearPressTimer();
+    timer = setTimeout(async () => {
+      suppressNextClick = true;
+      await openNativeAlternativesSheet(bubble.dataset.original);
+    }, LONG_PRESS_MS);
+  });
+
+  bubble.addEventListener('pointerup', clearPressTimer);
+  bubble.addEventListener('pointerleave', clearPressTimer);
+  bubble.addEventListener('pointercancel', clearPressTimer);
+
+  bubble.addEventListener('click', (event) => {
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      event.stopImmediatePropagation();
+      event.preventDefault();
+    }
+  }, true);
+}
+
+function ensureNativeAlternativesSheet() {
+  if (nativeSheetRefs) return nativeSheetRefs;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'native-sheet-overlay';
+  overlay.innerHTML = `
+    <div class="native-sheet" role="dialog" aria-label="Native alternatives">
+      <div class="native-sheet-handle"></div>
+      <div class="native-sheet-header">
+        <div class="native-sheet-title">Native alternatives</div>
+        <button class="native-sheet-close" type="button">Close</button>
+      </div>
+      <div class="native-sheet-body"></div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const sheet = overlay.querySelector('.native-sheet');
+  const body = overlay.querySelector('.native-sheet-body');
+  const closeBtn = overlay.querySelector('.native-sheet-close');
+
+  const close = () => closeNativeAlternativesSheet();
+  closeBtn.addEventListener('click', close);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) close();
+  });
+
+  nativeSheetRefs = { overlay, sheet, body };
+  return nativeSheetRefs;
+}
+
+function closeNativeAlternativesSheet() {
+  const refs = ensureNativeAlternativesSheet();
+  refs.overlay.classList.remove('active');
+  document.body.classList.remove('native-sheet-open');
+}
+
+async function openNativeAlternativesSheet(originalText) {
+  const refs = ensureNativeAlternativesSheet();
+  const currentRequestId = ++nativeSheetRequestId;
+
+  refs.body.innerHTML = `
+    <div class="native-original">
+      <div class="native-original-label">Your message</div>
+      <div class="native-original-text">${escapeHtml(originalText)}</div>
+    </div>
+    <div class="native-loading">Finding natural options...</div>
+  `;
+
+  refs.overlay.classList.add('active');
+  document.body.classList.add('native-sheet-open');
+
+  const alternatives = await gemini.getNativeAlternatives(originalText);
+  if (currentRequestId !== nativeSheetRequestId) return;
+
+  refs.body.innerHTML = `
+    <div class="native-original">
+      <div class="native-original-label">Your message</div>
+      <div class="native-original-text">${escapeHtml(originalText)}</div>
+    </div>
+    ${alternatives.map((item, index) => `
+      <div class="native-option">
+        <div class="native-option-top">
+          <span class="native-rank">Option ${index + 1}</span>
+          <span class="native-tone">${escapeHtml(item.tone)}</span>
+        </div>
+        <div class="native-text">${escapeHtml(item.text)}</div>
+        <div class="native-nuance">Nuance: ${escapeHtml(item.nuance)}</div>
+      </div>
+    `).join('')}
+  `;
 }
 
 // ===========================
