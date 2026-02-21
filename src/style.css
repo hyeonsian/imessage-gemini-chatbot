@@ -48,7 +48,7 @@
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
 
   /* Typography */
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  --font-family: 'Helvetica', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
 
   /* Border Radius */
   --radius-bubble: 20px;
@@ -272,8 +272,8 @@ body {
 /* Message Bubble */
 .message {
   display: flex;
-  margin-bottom: 12px;
-  /* Increased from 3px for better readability */
+  margin-bottom: 8px;
+  /* Adjusted to 8px as 12px was too much, and 3px was too tight */
   animation: messageIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
@@ -362,6 +362,29 @@ body {
 
 .typing-indicator .dot:nth-child(3) {
   animation-delay: 0.4s;
+}
+
+.message-time {
+  font-size: 10px;
+  /* Reduced to 10px */
+  color: var(--text-secondary);
+  /* Gray color */
+  margin-top: 4px;
+  padding: 0 4px;
+  display: none;
+}
+
+.message:not(:has(+ .message.sent)).sent .message-time,
+.message:not(:has(+ .message.received)).received .message-time {
+  display: block;
+}
+
+.message.sent .message-time {
+  text-align: right;
+}
+
+.message.received .message-time {
+  text-align: left;
 }
 
 @keyframes typingBounce {
