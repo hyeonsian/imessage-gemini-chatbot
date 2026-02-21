@@ -372,7 +372,7 @@ function appendGrammarOkIndicator(bubbleEl) {
   if (!bubbleEl || bubbleEl.querySelector('.grammar-ok-indicator')) return;
   const indicator = document.createElement('div');
   indicator.className = 'grammar-ok-indicator';
-  indicator.innerHTML = '<span class="grammar-ok-icon">✓</span>';
+  indicator.innerHTML = '<span class="grammar-ok-icon">✓</span><span class="grammar-ok-label">No grammar issues.</span>';
   bubbleEl.appendChild(indicator);
 }
 
@@ -394,7 +394,7 @@ function formatTime(date) {
   return new Intl.DateTimeFormat('ko-KR', {
     hour: '2-digit',
     minute: '2-digit',
-    hour12: true,
+    hour12: false,
   }).format(date);
 }
 
