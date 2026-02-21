@@ -1168,10 +1168,10 @@ function closeConversationList() {
 function setupBackSwipeGesture() {
   if (!appRoot) return;
 
-  const EDGE_START_PX = 28;
-  const ACTIVATE_DX = 14;
-  const TRIGGER_DX = 84;
-  const MAX_SHIFT = 72;
+  const EDGE_START_PX = 64;
+  const ACTIVATE_DX = 8;
+  const TRIGGER_DX = 52;
+  const MAX_SHIFT = 68;
 
   const resetVisual = (animated = true) => {
     if (!appRoot) return;
@@ -1204,7 +1204,7 @@ function setupBackSwipeGesture() {
     }
   };
 
-  appRoot.addEventListener('touchstart', (event) => {
+  window.addEventListener('touchstart', (event) => {
     if (isBlockedByModal()) return;
     if (!event.touches || event.touches.length !== 1) return;
 
@@ -1218,7 +1218,7 @@ function setupBackSwipeGesture() {
     backSwipeState.deltaX = 0;
   }, { passive: true });
 
-  appRoot.addEventListener('touchmove', (event) => {
+  window.addEventListener('touchmove', (event) => {
     if (!backSwipeState.tracking || !event.touches || event.touches.length !== 1) return;
 
     const touch = event.touches[0];
@@ -1226,11 +1226,11 @@ function setupBackSwipeGesture() {
     const dy = Math.abs(touch.clientY - backSwipeState.startY);
 
     if (!backSwipeState.active) {
-      if (dy > 16 && dy > Math.abs(dx)) {
+      if (dy > 20 && dy > Math.abs(dx)) {
         endGesture(false);
         return;
       }
-      if (dx > ACTIVATE_DX && dx > dy * 1.2) {
+      if (dx > ACTIVATE_DX && dx > dy * 1.05) {
         backSwipeState.active = true;
       }
     }
@@ -1243,8 +1243,8 @@ function setupBackSwipeGesture() {
     appRoot.style.transform = `translateX(${backSwipeState.deltaX}px)`;
   }, { passive: false });
 
-  appRoot.addEventListener('touchend', () => endGesture(true), { passive: true });
-  appRoot.addEventListener('touchcancel', () => endGesture(false), { passive: true });
+  window.addEventListener('touchend', () => endGesture(true), { passive: true });
+  window.addEventListener('touchcancel', () => endGesture(false), { passive: true });
 }
 
 function inputAreaHeightAdjust() {
