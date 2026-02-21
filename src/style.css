@@ -14,9 +14,9 @@
   --text-secondary: #8e8e93;
   --text-tertiary: #636366;
 
-  --bubble-sent-bg: #007aff;
+  --bubble-sent-bg: #2396FF;
   --bubble-sent-text: #ffffff;
-  --bubble-received-bg: #2c2c2e;
+  --bubble-received-bg: #262629;
   --bubble-received-text: #ffffff;
 
   --accent: #007aff;
@@ -71,9 +71,9 @@
     --text-secondary: #6e6e73;
     --text-tertiary: #aeaeb2;
 
-    --bubble-sent-bg: #007aff;
+    --bubble-sent-bg: #39ACFD;
     --bubble-sent-text: #ffffff;
-    --bubble-received-bg: #e5e5ea;
+    --bubble-received-bg: #E9E9E9;
     --bubble-received-text: #000000;
 
     --accent: #007aff;
