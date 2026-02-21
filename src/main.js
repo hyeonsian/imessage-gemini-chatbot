@@ -467,7 +467,11 @@ function setupUserBubbleLongPress(bubble) {
     clearPressTimer();
     timer = setTimeout(async () => {
       suppressNextClick = true;
-      await openNativeAlternativesSheet(bubble.dataset.original);
+      const index = Number(bubble.dataset.messageIndex);
+      const msg = Number.isNaN(index) ? null : messages[index];
+      await openNativeAlternativesSheet(bubble.dataset.original, {
+        sourceSentAt: msg?.sentAt || msg?.createdAt || null,
+      });
     }, LONG_PRESS_MS);
   });
 
@@ -522,7 +526,7 @@ function closeNativeAlternativesSheet() {
   document.body.classList.remove('native-sheet-open');
 }
 
-async function openNativeAlternativesSheet(originalText) {
+async function openNativeAlternativesSheet(originalText, context = {}) {
   const refs = ensureNativeAlternativesSheet();
   const currentRequestId = ++nativeSheetRequestId;
 
@@ -560,10 +564,10 @@ async function openNativeAlternativesSheet(originalText) {
     `).join('')}
   `;
 
-  attachNativeOptionSwipeHandlers(alternatives, originalText);
+  attachNativeOptionSwipeHandlers(alternatives, originalText, context);
 }
 
-function attachNativeOptionSwipeHandlers(alternatives, originalText) {
+function attachNativeOptionSwipeHandlers(alternatives, originalText, context = {}) {
   if (!nativeSheetRefs?.body) return;
   const rows = nativeSheetRefs.body.querySelectorAll('.native-option-swipe');
 
@@ -586,7 +590,7 @@ function attachNativeOptionSwipeHandlers(alternatives, originalText) {
     };
 
     addBtn.addEventListener('click', () => {
-      const added = addDictionaryEntry(option, originalText);
+      const added = addDictionaryEntry(option, originalText, context.sourceSentAt || null);
       showToast(added ? '내 사전에 추가했습니다.' : '이미 사전에 있는 표현입니다.');
       closeRow();
     });
@@ -642,18 +646,20 @@ function saveDictionaryEntries(entries) {
   localStorage.setItem('native_dictionary_entries', JSON.stringify(entries));
 }
 
-function addDictionaryEntry(option, originalText = '') {
+function addDictionaryEntry(option, originalText = '', sourceSentAt = null) {
   const entries = getDictionaryEntries();
   const exists = entries.some((entry) => entry.text.toLowerCase() === option.text.toLowerCase());
   if (exists) return false;
 
+  const createdAt = new Date().toISOString();
   entries.unshift({
     id: generateMessageId(),
     original: originalText,
+    originalSentAt: sourceSentAt || createdAt,
     text: option.text,
     tone: option.tone,
     nuance: option.nuance,
-    createdAt: new Date().toISOString(),
+    createdAt,
   });
   saveDictionaryEntries(entries);
   updateDictionaryButtonBadge();
@@ -677,16 +683,112 @@ function renderDictionaryPage() {
   }
 
   dictionaryPageList.innerHTML = entries.map((entry) => `
-    <div class="dictionary-entry">
-      <div class="dictionary-entry-original-label">원래 메시지</div>
-      <div class="dictionary-entry-original">${escapeHtml(entry.original || '-')}</div>
-      <div class="dictionary-entry-top">
-        <span class="dictionary-tone">${escapeHtml(entry.tone || 'Natural')}</span>
+    <div class="dictionary-entry-swipe" data-entry-id="${escapeHtml(entry.id || '')}">
+      <button class="dictionary-delete-btn" type="button" aria-label="사전에서 삭제">−</button>
+      <div class="dictionary-entry">
+        <div class="dictionary-entry-original-head">
+          <span class="dictionary-entry-original-label">원래 메시지</span>
+          <span class="dictionary-entry-time">${escapeHtml(formatDictionaryTimestamp(entry.originalSentAt || entry.createdAt))}</span>
+        </div>
+        <div class="dictionary-entry-original">${escapeHtml(entry.original || '-')}</div>
+        <div class="dictionary-entry-top">
+          <span class="dictionary-tone">${escapeHtml(entry.tone || 'Natural')}</span>
+        </div>
+        <div class="dictionary-text">${escapeHtml(entry.text)}</div>
+        <div class="dictionary-nuance">${escapeHtml(entry.nuance || '')}</div>
       </div>
-      <div class="dictionary-text">${escapeHtml(entry.text)}</div>
-      <div class="dictionary-nuance">${escapeHtml(entry.nuance || '')}</div>
     </div>
   `).join('');
+
+  attachDictionarySwipeHandlers();
+}
+
+function attachDictionarySwipeHandlers() {
+  if (!dictionaryPageList) return;
+  const rows = dictionaryPageList.querySelectorAll('.dictionary-entry-swipe');
+
+  rows.forEach((row) => {
+    const entryCard = row.querySelector('.dictionary-entry');
+    const deleteBtn = row.querySelector('.dictionary-delete-btn');
+    const entryId = row.dataset.entryId;
+    if (!entryCard || !deleteBtn || !entryId) return;
+
+    let startX = 0;
+    let startY = 0;
+    let currentX = 0;
+    let dragging = false;
+    const MAX_SWIPE = 72;
+
+    const closeRow = () => {
+      row.classList.remove('revealed');
+      entryCard.style.transform = '';
+    };
+
+    deleteBtn.addEventListener('click', () => {
+      removeDictionaryEntry(entryId);
+      renderDictionaryPage();
+      updateDictionaryButtonBadge();
+      showToast('사전에서 삭제했습니다.');
+    });
+
+    row.addEventListener('touchstart', (event) => {
+      if (!event.touches || event.touches.length !== 1) return;
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+      dragging = true;
+      currentX = row.classList.contains('revealed') ? -MAX_SWIPE : 0;
+      entryCard.style.transition = 'none';
+    }, { passive: true });
+
+    row.addEventListener('touchmove', (event) => {
+      if (!dragging || !event.touches || event.touches.length !== 1) return;
+
+      const dx = event.touches[0].clientX - startX;
+      const dy = Math.abs(event.touches[0].clientY - startY);
+      if (dy > Math.abs(dx) && dy > 8) return;
+
+      event.preventDefault();
+      const nextX = Math.max(-MAX_SWIPE, Math.min(0, currentX + dx));
+      entryCard.style.transform = `translateX(${nextX}px)`;
+    }, { passive: false });
+
+    const finishSwipe = () => {
+      if (!dragging) return;
+      dragging = false;
+      entryCard.style.transition = 'transform 0.18s ease';
+
+      const matrix = getComputedStyle(entryCard).transform;
+      const tx = matrix !== 'none' ? Number(matrix.split(',')[4]) : 0;
+      const shouldReveal = tx <= -36;
+
+      if (shouldReveal) {
+        row.classList.add('revealed');
+        entryCard.style.transform = `translateX(-${MAX_SWIPE}px)`;
+      } else {
+        closeRow();
+      }
+    };
+
+    row.addEventListener('touchend', finishSwipe, { passive: true });
+    row.addEventListener('touchcancel', finishSwipe, { passive: true });
+  });
+}
+
+function removeDictionaryEntry(entryId) {
+  const entries = getDictionaryEntries().filter((entry) => entry.id !== entryId);
+  saveDictionaryEntries(entries);
+}
+
+function formatDictionaryTimestamp(isoString) {
+  const date = isoString ? new Date(isoString) : new Date();
+  if (Number.isNaN(date.getTime())) return '--/--/-- --:--';
+
+  const yy = String(date.getFullYear()).slice(-2);
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${yy}/${mm}/${dd} ${hh}:${min}`;
 }
 
 function openDictionaryPage() {
@@ -709,7 +811,7 @@ async function sendMessage() {
 
   // Add user message to state
   const time = formatTime(new Date());
-  messages.push({ id: generateMessageId(), role: 'user', text, time });
+  messages.push({ id: generateMessageId(), role: 'user', text, time, sentAt: new Date().toISOString() });
 
   // UI updates
   removeWelcomeMessage();
