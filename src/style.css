@@ -455,10 +455,11 @@ body {
   background: var(--bg-input);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-input);
-  padding: 0 16px;
+  padding: 0 12px 0 16px;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   transition: border-color 0.2s;
+  min-height: 40px;
 }
 
 .input-wrapper:focus-within {
@@ -466,7 +467,7 @@ body {
 }
 
 .input-wrapper textarea {
-  width: 100%;
+  flex: 1;
   background: transparent;
   border: none;
   outline: none;
@@ -483,36 +484,74 @@ body {
   color: var(--text-tertiary);
 }
 
-.send-btn {
-  width: 36px;
-  height: 36px;
+.voice-btn {
+  width: 32px;
+  height: 32px;
   border: none;
-  background: var(--accent);
-  color: white;
-  border-radius: var(--radius-btn);
+  background: transparent;
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
   transition: all 0.2s;
-  transform: scale(1);
+  margin-bottom: 4px;
 }
 
-.send-btn:disabled {
-  background: var(--bg-tertiary);
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-  transform: scale(0.9);
+.voice-btn.recording {
+  color: var(--danger);
+  animation: pulse 1.5s infinite;
 }
 
-.send-btn:not(:disabled):hover {
-  background: var(--accent-hover);
-  transform: scale(1.05);
+.send-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--accent);
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  display: none;
+  /* Hidden by default, shown via JS */
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  margin-bottom: 4px;
 }
 
-.send-btn:not(:disabled):active {
-  transform: scale(0.95);
+.send-btn.active {
+  display: flex;
+  animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* ===========================

@@ -24,9 +24,36 @@ const clearChat = document.getElementById('clearChat');
 const clearBtn = document.getElementById('clearBtn');
 const contactStatus = document.getElementById('contactStatus');
 const enableNotifications = document.getElementById('enableNotifications');
-const testPushBtn = document.getElementById('testPushBtn');
+const voiceBtn = document.getElementById('voiceBtn');
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+
+// Speech Recognition Setup
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+if (SpeechRecognition) {
+  recognition = new SpeechRecognition();
+  recognition.lang = 'en-US'; // Optimized for English learning
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    messageInput.value += (messageInput.value ? ' ' : '') + transcript;
+    updateSendButton();
+    inputAreaHeightAdjust();
+  };
+
+  recognition.onend = () => {
+    voiceBtn.classList.remove('recording');
+  };
+
+  recognition.onerror = (event) => {
+    console.error('Speech recognition error:', event.error);
+    voiceBtn.classList.remove('recording');
+    showToast('음성 인식 중 오류가 발생했습니다.');
+  };
+}
 
 // ===========================
 // Initialize
@@ -76,7 +103,7 @@ function showWelcomeMessage() {
     <div class="emoji">✦</div>
     <h2>AI Assistant</h2>
     <p>${gemini.isConfigured
-      ? 'Gemini API가 연결되었습니다.<br>아무 메시지나 보내서 대화를 시작해보세요!'
+      ? 'English Learning Mode.<br>Send a message to start practicing!'
       : '설정이 필요합니다.<br>관리자에게 문의하거나 Vercel 환경 변수를 확인해주세요.'
     }</p>
   `;
@@ -256,20 +283,28 @@ function setupEventListeners() {
   // Send button
   sendBtn.addEventListener('click', sendMessage);
 
-  // Enter to send (Shift+Enter for newline)
-  messageInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  });
-
   // Auto-resize textarea
   messageInput.addEventListener('input', () => {
-    messageInput.style.height = 'auto';
-    messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+    inputAreaHeightAdjust();
     updateSendButton();
   });
+
+  // Voice button
+  if (voiceBtn) {
+    voiceBtn.addEventListener('click', () => {
+      if (!recognition) {
+        showToast('이 브라우저는 음성 인식을 지원하지 않습니다.');
+        return;
+      }
+
+      if (voiceBtn.classList.contains('recording')) {
+        recognition.stop();
+      } else {
+        voiceBtn.classList.add('recording');
+        recognition.start();
+      }
+    });
+  }
 
   // Settings modal
   settingsBtn.addEventListener('click', () => {
@@ -359,8 +394,20 @@ function setupEventListeners() {
   }
 }
 
+function inputAreaHeightAdjust() {
+  messageInput.style.height = 'auto';
+  messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+}
+
 function updateSendButton() {
-  sendBtn.disabled = messageInput.value.trim().length === 0;
+  const hasText = messageInput.value.trim().length > 0;
+  if (hasText) {
+    sendBtn.classList.add('active');
+    voiceBtn.style.display = 'none';
+  } else {
+    sendBtn.classList.remove('active');
+    voiceBtn.style.display = 'flex';
+  }
 }
 
 // Push Notifications

@@ -70,11 +70,18 @@
                     </svg>
                 </button>
                 <div class="input-wrapper">
-                    <textarea id="messageInput" placeholder="메시지를 입력하세요..." rows="1" maxlength="4000"></textarea>
+                    <textarea id="messageInput" placeholder="iMessage" rows="1" maxlength="4000"></textarea>
+                    <button class="voice-btn" id="voiceBtn" aria-label="음성 메시지">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" fill="currentColor" />
+                            <path d="M19 10v1a7 7 0 01-14 0v-1M12 18v4m-4 0h8" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </button>
                 </div>
-                <button class="send-btn" id="sendBtn" aria-label="전송" disabled>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                        <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                <button class="send-btn" id="sendBtn" aria-label="전송">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="3" stroke-linecap="round"
                             stroke-linejoin="round" />
                     </svg>
                 </button>
