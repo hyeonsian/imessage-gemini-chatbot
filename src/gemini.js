@@ -174,13 +174,16 @@ Sentence:
                 naturalAlternative,
                 naturalReason
             );
+            const enhancedSentenceFeedback = this._hasWeakSentenceFeedback(sentenceFeedback)
+                ? await this._requestDetailedSentenceFeedback(text, normalizedEdits, correctedText)
+                : sentenceFeedback;
 
             return {
                 hasErrors,
                 correctedText: hasErrors ? correctedText : text,
                 edits: normalizedEdits,
                 feedback,
-                sentenceFeedback,
+                sentenceFeedback: enhancedSentenceFeedback,
                 naturalAlternative: hasUsableNaturalAlternative ? naturalAlternative : '',
                 naturalReason: hasUsableNaturalAlternative ? naturalReason : ''
             };
@@ -555,12 +558,118 @@ Sentence:
             }];
         }
 
-        return sourceSentences.slice(0, 6).map((sentence, index) => ({
-            sentence,
-            feedback: index === 0 ? baseFeedback : 'Clear meaning. You can keep this sentence as is.',
+        return sourceSentences.slice(0, 6).map((sentence, index) =>
+            this._buildLocalSentenceFeedback(sentence, index, baseFeedback, fallbackSuggested, fallbackWhy)
+        );
+    }
+
+    _hasWeakSentenceFeedback(entries) {
+        if (!Array.isArray(entries) || entries.length === 0) return true;
+
+        const weakPattern = /(looks good overall|clear meaning|keep this sentence as is)/i;
+        const weakCount = entries.reduce((count, item) => {
+            const feedback = String(item?.feedback || '');
+            const suggested = String(item?.suggested || '').trim();
+            const why = String(item?.why || '').trim();
+            const isWeak = weakPattern.test(feedback) && !suggested && !why;
+            return count + (isWeak ? 1 : 0);
+        }, 0);
+
+        return weakCount >= Math.max(1, Math.ceil(entries.length * 0.6));
+    }
+
+    async _requestDetailedSentenceFeedback(sourceText, edits, correctedText) {
+        const sentences = this._splitIntoSentences(sourceText);
+        if (sentences.length === 0 || !this.isConfigured) {
+            return this._normalizeSentenceFeedback([], sourceText, 'Looks good overall.', '', '');
+        }
+
+        const prompt = `You are a meticulous native English coach.
+Analyze EACH sentence and return ONLY valid JSON:
+{
+  "sentenceFeedback": [
+    {
+      "sentence": "string",
+      "feedback": "string",
+      "suggested": "string",
+      "why": "short string"
+    }
+  ]
+}
+Rules:
+- Provide one item for each sentence in order.
+- Check grammar, typo risk, word choice, and natural spoken flow.
+- Be concrete and specific. Avoid generic praise.
+- "feedback" should be 12-28 words.
+- If sentence is already fine, keep "suggested" as "" and explain what works well.
+- If improved phrasing is needed, "suggested" must use common everyday English.
+- Do not mention capitalization-only or final punctuation-only issues.
+- Never prepend meta phrases like "I mean,".
+
+Original text:
+"${sourceText}"
+
+Known edits from first pass:
+${JSON.stringify(edits).slice(0, 1800)}
+
+Corrected text:
+"${correctedText}"`;
+
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.effectiveApiKey}`;
+            const body = {
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0.2,
+                    maxOutputTokens: 1024,
+                    responseMimeType: 'application/json'
+                }
+            };
+
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+
+            const data = await res.json();
+            const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+            const parsed = this._parseJsonSafely(raw);
+            return this._normalizeSentenceFeedback(parsed?.sentenceFeedback, sourceText, 'Detailed review complete.', '', '');
+        } catch (error) {
+            console.error('Detailed sentence feedback error:', error);
+            return this._normalizeSentenceFeedback([], sourceText, 'Looks good overall.', '', '');
+        }
+    }
+
+    _buildLocalSentenceFeedback(sentence, index, baseFeedback = '', fallbackSuggested = '', fallbackWhy = '') {
+        const trimmed = String(sentence || '').trim();
+        const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
+        const hasQuestion = /\?$/.test(trimmed);
+        const hasContraction = /\b(\w+'\w+)\b/.test(trimmed);
+
+        let feedback = baseFeedback || 'The message is understandable and mostly natural.';
+        if (index > 0) {
+            if (wordCount >= 16) {
+                feedback = 'The meaning is clear, but this sentence is long. Splitting it can sound more natural in chat.';
+            } else if (hasQuestion) {
+                feedback = 'This question is clear. Check word order and helper verbs to keep it natural and easy to follow.';
+            } else if (!hasContraction && wordCount >= 6) {
+                feedback = 'This sentence is clear. A contraction might make it sound more like everyday native texting.';
+            } else {
+                feedback = 'The sentence is clear and natural. Word choice works well for casual everyday conversation.';
+            }
+        }
+
+        return {
+            sentence: trimmed,
+            feedback,
             suggested: index === 0 ? this._cleanAlternativeText(fallbackSuggested || '') : '',
             why: index === 0 ? String(fallbackWhy || '').trim() : '',
-        }));
+        };
     }
 
     _getDemoResponse() {
