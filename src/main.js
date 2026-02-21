@@ -262,6 +262,7 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
       bubble.dataset.review = JSON.stringify(messageData.grammarReview);
     }
     if (messageData?.grammarReview?.checked && !messageData?.grammarReview?.hasErrors) {
+      bubble.classList.add('grammar-ok');
       appendGrammarOkIndicator(bubble);
     }
 
