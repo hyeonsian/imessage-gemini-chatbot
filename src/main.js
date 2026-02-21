@@ -24,6 +24,7 @@ let isProcessing = false;
 let hasMessageIdChanges = false;
 let nativeSheetRequestId = 0;
 let nativeSheetRefs = null;
+let dictionarySheetRefs = null;
 let backSwipeState = {
   tracking: false,
   active: false,
@@ -106,7 +107,9 @@ function init() {
   ensureMessageIds();
   if (hasMessageIdChanges) saveMessages();
   ensureNativeAlternativesSheet();
+  ensureDictionarySheet();
   renderConversationList();
+  updateDictionaryButtonBadge();
   closeConversationList();
 
   renderMessages();
@@ -540,16 +543,183 @@ async function openNativeAlternativesSheet(originalText) {
       <div class="native-original-text">${escapeHtml(originalText)}</div>
     </div>
     ${alternatives.map((item, index) => `
-      <div class="native-option">
-        <div class="native-option-top">
-          <span class="native-rank">Option ${index + 1}</span>
-          <span class="native-tone">${escapeHtml(item.tone)}</span>
+      <div class="native-option-swipe" data-option-index="${index}">
+        <button class="native-add-btn" type="button" aria-label="내 사전에 추가">+</button>
+        <div class="native-option">
+          <div class="native-option-top">
+            <span class="native-rank">Option ${index + 1}</span>
+            <span class="native-tone">${escapeHtml(item.tone)}</span>
+          </div>
+          <div class="native-text">${escapeHtml(item.text)}</div>
+          <div class="native-nuance">Nuance: ${escapeHtml(item.nuance)}</div>
         </div>
-        <div class="native-text">${escapeHtml(item.text)}</div>
-        <div class="native-nuance">Nuance: ${escapeHtml(item.nuance)}</div>
       </div>
     `).join('')}
   `;
+
+  attachNativeOptionSwipeHandlers(alternatives);
+}
+
+function attachNativeOptionSwipeHandlers(alternatives) {
+  if (!nativeSheetRefs?.body) return;
+  const rows = nativeSheetRefs.body.querySelectorAll('.native-option-swipe');
+
+  rows.forEach((row) => {
+    const optionCard = row.querySelector('.native-option');
+    const addBtn = row.querySelector('.native-add-btn');
+    const optionIndex = Number(row.dataset.optionIndex);
+    const option = alternatives[optionIndex];
+    if (!optionCard || !addBtn || !option) return;
+
+    let startX = 0;
+    let startY = 0;
+    let currentX = 0;
+    let dragging = false;
+    const MAX_SWIPE = 72;
+
+    const closeRow = () => {
+      row.classList.remove('revealed');
+      optionCard.style.transform = '';
+    };
+
+    addBtn.addEventListener('click', () => {
+      const added = addDictionaryEntry(option);
+      showToast(added ? '내 사전에 추가했습니다.' : '이미 사전에 있는 표현입니다.');
+      closeRow();
+    });
+
+    row.addEventListener('touchstart', (event) => {
+      if (!event.touches || event.touches.length !== 1) return;
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+      dragging = true;
+      currentX = row.classList.contains('revealed') ? -MAX_SWIPE : 0;
+      optionCard.style.transition = 'none';
+    }, { passive: true });
+
+    row.addEventListener('touchmove', (event) => {
+      if (!dragging || !event.touches || event.touches.length !== 1) return;
+
+      const dx = event.touches[0].clientX - startX;
+      const dy = Math.abs(event.touches[0].clientY - startY);
+      if (dy > Math.abs(dx) && dy > 8) return;
+
+      event.preventDefault();
+      const nextX = Math.max(-MAX_SWIPE, Math.min(0, currentX + dx));
+      optionCard.style.transform = `translateX(${nextX}px)`;
+    }, { passive: false });
+
+    const finishSwipe = () => {
+      if (!dragging) return;
+      dragging = false;
+      optionCard.style.transition = 'transform 0.18s ease';
+
+      const matrix = getComputedStyle(optionCard).transform;
+      const tx = matrix !== 'none' ? Number(matrix.split(',')[4]) : 0;
+      const shouldReveal = tx <= -36;
+
+      if (shouldReveal) {
+        row.classList.add('revealed');
+        optionCard.style.transform = `translateX(-${MAX_SWIPE}px)`;
+      } else {
+        closeRow();
+      }
+    };
+
+    row.addEventListener('touchend', finishSwipe, { passive: true });
+    row.addEventListener('touchcancel', finishSwipe, { passive: true });
+  });
+}
+
+function getDictionaryEntries() {
+  return JSON.parse(localStorage.getItem('native_dictionary_entries') || '[]');
+}
+
+function saveDictionaryEntries(entries) {
+  localStorage.setItem('native_dictionary_entries', JSON.stringify(entries));
+}
+
+function addDictionaryEntry(option) {
+  const entries = getDictionaryEntries();
+  const exists = entries.some((entry) => entry.text.toLowerCase() === option.text.toLowerCase());
+  if (exists) return false;
+
+  entries.unshift({
+    id: generateMessageId(),
+    text: option.text,
+    tone: option.tone,
+    nuance: option.nuance,
+    createdAt: new Date().toISOString(),
+  });
+  saveDictionaryEntries(entries);
+  updateDictionaryButtonBadge();
+  if (dictionarySheetRefs?.overlay?.classList.contains('active')) {
+    renderDictionarySheetBody();
+  }
+  return true;
+}
+
+function updateDictionaryButtonBadge() {
+  if (!dictionaryBtn) return;
+  dictionaryBtn.dataset.count = String(getDictionaryEntries().length);
+}
+
+function ensureDictionarySheet() {
+  if (dictionarySheetRefs) return dictionarySheetRefs;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'dictionary-sheet-overlay';
+  overlay.innerHTML = `
+    <div class="dictionary-sheet" role="dialog" aria-label="내 사전">
+      <div class="dictionary-sheet-handle"></div>
+      <div class="dictionary-sheet-header">
+        <div class="dictionary-sheet-title">내 사전</div>
+        <button class="dictionary-sheet-close" type="button">Close</button>
+      </div>
+      <div class="dictionary-sheet-body"></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const body = overlay.querySelector('.dictionary-sheet-body');
+  const closeBtn = overlay.querySelector('.dictionary-sheet-close');
+  closeBtn.addEventListener('click', () => closeDictionarySheet());
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeDictionarySheet();
+  });
+
+  dictionarySheetRefs = { overlay, body };
+  return dictionarySheetRefs;
+}
+
+function renderDictionarySheetBody() {
+  const refs = ensureDictionarySheet();
+  const entries = getDictionaryEntries();
+  if (entries.length === 0) {
+    refs.body.innerHTML = '<div class="dictionary-empty">아직 저장된 표현이 없습니다.</div>';
+    return;
+  }
+
+  refs.body.innerHTML = entries.map((entry) => `
+    <div class="dictionary-entry">
+      <div class="dictionary-entry-top">
+        <span class="dictionary-tone">${escapeHtml(entry.tone || 'Natural')}</span>
+      </div>
+      <div class="dictionary-text">${escapeHtml(entry.text)}</div>
+      <div class="dictionary-nuance">${escapeHtml(entry.nuance || '')}</div>
+    </div>
+  `).join('');
+}
+
+function openDictionarySheet() {
+  const refs = ensureDictionarySheet();
+  renderDictionarySheetBody();
+  refs.overlay.classList.add('active');
+}
+
+function closeDictionarySheet() {
+  const refs = ensureDictionarySheet();
+  refs.overlay.classList.remove('active');
 }
 
 // ===========================
@@ -818,7 +988,7 @@ function setupEventListeners() {
 
   if (dictionaryBtn) {
     dictionaryBtn.addEventListener('click', () => {
-      showToast('내 사전 기능은 다음 단계에서 연결됩니다.');
+      openDictionarySheet();
     });
   }
 

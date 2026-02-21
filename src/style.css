@@ -297,6 +297,25 @@ body.native-sheet-open {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  position: relative;
+}
+
+.dictionary-btn[data-count]:not([data-count="0"])::after {
+  content: attr(data-count);
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ===========================
@@ -1254,6 +1273,36 @@ body.native-sheet-open {
   background: var(--bg-tertiary);
   border-radius: 14px;
   padding: 12px;
+  transition: transform 0.18s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.native-option-swipe {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+.native-add-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 72px;
+  height: 100%;
+  border: none;
+  background: #34c759;
+  color: #fff;
+  font-size: 34px;
+  font-weight: 300;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.native-option-swipe.revealed .native-option {
+  transform: translateX(-72px);
 }
 
 .native-option-top {
@@ -1283,6 +1332,106 @@ body.native-sheet-open {
 
 .native-nuance {
   margin-top: 7px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dictionary-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  z-index: 3600;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.dictionary-sheet-overlay.active {
+  display: flex;
+}
+
+.dictionary-sheet {
+  width: 100%;
+  max-width: 520px;
+  background: var(--bg-secondary);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 8px 14px calc(18px + var(--safe-area-bottom));
+  max-height: 72vh;
+  overflow-y: auto;
+  transform: translateY(100%);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dictionary-sheet-overlay.active .dictionary-sheet {
+  transform: translateY(0);
+}
+
+.dictionary-sheet-handle {
+  width: 36px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(142, 142, 147, 0.58);
+  margin: 0 auto 10px;
+}
+
+.dictionary-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.dictionary-sheet-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.dictionary-sheet-close {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dictionary-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dictionary-empty {
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding: 12px 4px;
+}
+
+.dictionary-entry {
+  background: var(--bg-tertiary);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.dictionary-entry-top {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dictionary-tone {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4cb7ff;
+}
+
+.dictionary-text {
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.dictionary-nuance {
+  margin-top: 6px;
   font-size: 12px;
   color: var(--text-secondary);
 }
