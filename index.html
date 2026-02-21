@@ -22,6 +22,38 @@
         </div>
     </div>
 
+    <!-- Conversation List View -->
+    <div id="conversationListView" class="conversation-list-view">
+        <header class="list-header">
+            <button class="list-pill-btn" id="listEditBtn">편집</button>
+            <h1 class="list-title">메시지</h1>
+            <button class="list-menu-btn" id="listMenuBtn" aria-label="메뉴">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M4 7H20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+                    <path d="M4 12H16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+                    <path d="M4 17H12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+                </svg>
+            </button>
+        </header>
+
+        <main class="list-main" id="conversationList">
+            <!-- Conversations rendered by JS -->
+        </main>
+
+        <footer class="list-footer">
+            <button class="dictionary-btn" id="dictionaryBtn" aria-label="내 사전">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 4.5C5 3.67 5.67 3 6.5 3H18.5C19.33 3 20 3.67 20 4.5V18.5C20 19.33 19.33 20 18.5 20H6.5C5.67 20 5 19.33 5 18.5V4.5Z"
+                        stroke="currentColor" stroke-width="1.8" />
+                    <path d="M8.5 7H16.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                    <path d="M8.5 11H16.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                    <path d="M8.5 15H13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                </svg>
+                <span>내 사전</span>
+            </button>
+        </footer>
+    </div>
+
     <div id="app">
         <!-- Header -->
         <header class="chat-header">

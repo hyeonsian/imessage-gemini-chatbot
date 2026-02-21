@@ -38,6 +38,9 @@ const modelSelect = document.getElementById('modelSelect');
 const saveSettings = document.getElementById('saveSettings');
 const clearChat = document.getElementById('clearChat');
 const clearBtn = document.getElementById('clearBtn');
+const conversationListView = document.getElementById('conversationListView');
+const conversationList = document.getElementById('conversationList');
+const dictionaryBtn = document.getElementById('dictionaryBtn');
 const contactName = document.getElementById('contactName');
 const contactStatus = document.getElementById('contactStatus');
 const enableNotifications = document.getElementById('enableNotifications');
@@ -95,6 +98,8 @@ function init() {
   ensureMessageIds();
   if (hasMessageIdChanges) saveMessages();
   ensureNativeAlternativesSheet();
+  renderConversationList();
+  closeConversationList();
 
   renderMessages();
   loadSettings();
@@ -610,6 +615,7 @@ function removeTypingIndicator(indicator) {
 
 function saveMessages() {
   localStorage.setItem('chat_messages', JSON.stringify(messages));
+  renderConversationList();
 }
 
 function generateMessageId() {
@@ -796,17 +802,16 @@ function setupEventListeners() {
     }
   });
 
-  // Clear button (+ button)
+  // Back button -> open conversation list
   clearBtn.addEventListener('click', () => {
-    if (messages.length > 0 && confirm('새 대화를 시작하시겠습니까?')) {
-      messages = [];
-      saveMessages();
-      gemini.clearHistory();
-      renderMessages();
-      showWelcomeMessage();
-      showToast('새 대화가 시작되었습니다');
-    }
+    openConversationList();
   });
+
+  if (dictionaryBtn) {
+    dictionaryBtn.addEventListener('click', () => {
+      showToast('내 사전 기능은 다음 단계에서 연결됩니다.');
+    });
+  }
 
   // Enable Notifications button
   if (enableNotifications) {
@@ -844,6 +849,53 @@ function setupEventListeners() {
       }
     });
   }
+}
+
+function renderConversationList() {
+  if (!conversationList) return;
+
+  const aiName = localStorage.getItem('ai_name') || 'AI Assistant';
+  const aiAvatar = localStorage.getItem('ai_avatar') || '✦';
+  const latest = messages[messages.length - 1] || null;
+
+  const preview = latest
+    ? (latest.text || '').replace(/\s+/g, ' ').slice(0, 80)
+    : '대화를 시작해보세요.';
+  const time = latest?.time || '';
+
+  const avatarHtml = aiAvatar.startsWith('data:image')
+    ? `<div class="list-avatar list-avatar-image" style="background-image:url('${aiAvatar}')"></div>`
+    : `<div class="list-avatar">${escapeHtml(aiAvatar)}</div>`;
+
+  conversationList.innerHTML = `
+    <button class="conversation-row" id="conversationRowMain" type="button">
+      ${avatarHtml}
+      <div class="conversation-content">
+        <div class="conversation-top">
+          <span class="conversation-name">${escapeHtml(aiName)}</span>
+          <span class="conversation-time">${escapeHtml(time)}</span>
+        </div>
+        <div class="conversation-preview">${escapeHtml(preview)}</div>
+      </div>
+      <span class="conversation-chevron">›</span>
+    </button>
+  `;
+
+  const row = document.getElementById('conversationRowMain');
+  if (row) {
+    row.addEventListener('click', () => closeConversationList());
+  }
+}
+
+function openConversationList() {
+  renderConversationList();
+  if (conversationListView) conversationListView.classList.add('active');
+  document.body.classList.add('conversation-list-open');
+}
+
+function closeConversationList() {
+  if (conversationListView) conversationListView.classList.remove('active');
+  document.body.classList.remove('conversation-list-open');
 }
 
 function inputAreaHeightAdjust() {
