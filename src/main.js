@@ -17,13 +17,11 @@ const sendBtn = document.getElementById('sendBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsModal = document.getElementById('settingsModal');
 const modalClose = document.getElementById('modalClose');
-const apiKeyInput = document.getElementById('apiKeyInput');
 const modelSelect = document.getElementById('modelSelect');
 const systemPrompt = document.getElementById('systemPrompt');
 const saveSettings = document.getElementById('saveSettings');
 const clearChat = document.getElementById('clearChat');
 const clearBtn = document.getElementById('clearBtn');
-const toggleKeyVisibility = document.getElementById('toggleKeyVisibility');
 const contactStatus = document.getElementById('contactStatus');
 
 // ===========================
@@ -49,7 +47,7 @@ function showWelcomeMessage() {
     <h2>AI Assistant</h2>
     <p>${gemini.isConfigured
       ? 'Gemini API가 연결되었습니다.<br>아무 메시지나 보내서 대화를 시작해보세요!'
-      : '데모 모드로 실행 중입니다.<br>설정(⚙️)에서 API 키를 입력하면<br>Gemini AI와 대화할 수 있어요!'
+      : '설정이 필요합니다.<br>관리자에게 문의하거나 Vercel 환경 변수를 확인해주세요.'
     }</p>
   `;
   chatMessages.appendChild(welcome);
@@ -228,7 +226,6 @@ function saveMessages() {
 }
 
 function loadSettings() {
-  apiKeyInput.value = gemini.apiKey;
   modelSelect.value = gemini.model;
   systemPrompt.value = gemini.systemPrompt;
 }
@@ -291,7 +288,6 @@ function setupEventListeners() {
 
   // Save settings
   saveSettings.addEventListener('click', () => {
-    gemini.setApiKey(apiKeyInput.value.trim());
     gemini.setModel(modelSelect.value);
     gemini.setSystemPrompt(systemPrompt.value.trim());
     updateStatus();
@@ -322,12 +318,6 @@ function setupEventListeners() {
       showWelcomeMessage();
       showToast('새 대화가 시작되었습니다');
     }
-  });
-
-  // Toggle API key visibility
-  toggleKeyVisibility.addEventListener('click', () => {
-    const type = apiKeyInput.type === 'password' ? 'text' : 'password';
-    apiKeyInput.type = type;
   });
 }
 

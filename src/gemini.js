@@ -16,6 +16,7 @@ const DEMO_RESPONSES = [
 
 export class GeminiAPI {
     constructor() {
+        this.envApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
         this.apiKey = localStorage.getItem('gemini_api_key') || '';
         this.model = localStorage.getItem('gemini_model') || 'gemini-3-flash-preview';
         this.systemPrompt = localStorage.getItem('gemini_system_prompt') ||
@@ -24,7 +25,11 @@ export class GeminiAPI {
     }
 
     get isConfigured() {
-        return this.apiKey.length > 0;
+        return this.envApiKey.length > 0 || this.apiKey.length > 0;
+    }
+
+    get effectiveApiKey() {
+        return this.envApiKey || this.apiKey;
     }
 
     setApiKey(key) {
@@ -87,7 +92,7 @@ export class GeminiAPI {
     }
 
     async _callAPI() {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.effectiveApiKey}`;
 
         const body = {
             contents: this.conversationHistory,
