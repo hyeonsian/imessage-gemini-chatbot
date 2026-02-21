@@ -68,6 +68,7 @@ export class GeminiAPI {
                 correctedText: text,
                 edits: [],
                 feedback: 'Sounds natural for daily conversation.',
+                sentenceFeedback: this._normalizeSentenceFeedback([], text, 'Sounds natural for daily conversation.', '', ''),
                 naturalAlternative: '',
                 naturalReason: ''
             };
@@ -86,6 +87,14 @@ Analyze the user's sentence and return ONLY valid JSON (no markdown, no extra te
     }
   ],
   "feedback": "string",
+  "sentenceFeedback": [
+    {
+      "sentence": "string",
+      "feedback": "string",
+      "suggested": "string",
+      "why": "short string"
+    }
+  ],
   "naturalAlternative": "string",
   "naturalReason": "short string"
 }
@@ -94,6 +103,10 @@ Rules:
 - If there is no grammar issue, set hasErrors=false and edits=[].
 - Keep the original meaning and tone.
 - Give short native-speaker feedback in "feedback" (max 14 words).
+- Provide sentence-by-sentence feedback in "sentenceFeedback" (one item per sentence).
+- Each sentence feedback should be practical and specific (8-24 words).
+- If a sentence already sounds natural, keep "suggested" as "" for that sentence.
+- If improved phrasing is needed, set "suggested" to a short everyday rewrite.
 - If the sentence is already natural enough, set naturalAlternative="" and naturalReason="".
 - If a more natural everyday phrasing exists, set naturalAlternative to ONE short, common expression.
 - naturalAlternative must be easy everyday English (CEFR A2-B1), avoid idioms/jargon.
@@ -154,12 +167,20 @@ Sentence:
                 : '';
             const hasUsableNaturalAlternative = naturalAlternative
                 && !this._isMinorSentenceDifference(text, naturalAlternative);
+            const sentenceFeedback = this._normalizeSentenceFeedback(
+                parsed?.sentenceFeedback,
+                text,
+                feedback,
+                naturalAlternative,
+                naturalReason
+            );
 
             return {
                 hasErrors,
                 correctedText: hasErrors ? correctedText : text,
                 edits: normalizedEdits,
                 feedback,
+                sentenceFeedback,
                 naturalAlternative: hasUsableNaturalAlternative ? naturalAlternative : '',
                 naturalReason: hasUsableNaturalAlternative ? naturalReason : ''
             };
@@ -170,6 +191,7 @@ Sentence:
                 correctedText: text,
                 edits: [],
                 feedback: 'Looks good overall.',
+                sentenceFeedback: this._normalizeSentenceFeedback([], text, 'Looks good overall.', '', ''),
                 naturalAlternative: '',
                 naturalReason: ''
             };
@@ -492,6 +514,53 @@ Sentence:
             .replace(/\s+/g, ' ')
             .toLowerCase();
         return normalize(source) === normalize(target);
+    }
+
+    _splitIntoSentences(text) {
+        const value = String(text || '').trim();
+        if (!value) return [];
+        return value
+            .split(/(?<=[.!?])\s+|\n+/)
+            .map((sentence) => sentence.trim())
+            .filter(Boolean);
+    }
+
+    _normalizeSentenceFeedback(items, sourceText, fallbackFeedback = '', fallbackSuggested = '', fallbackWhy = '') {
+        const sourceSentences = this._splitIntoSentences(sourceText);
+        const baseFeedback = (fallbackFeedback || 'Looks good overall.').trim();
+        const normalizedFromModel = Array.isArray(items)
+            ? items
+                .map((item) => ({
+                    sentence: typeof item?.sentence === 'string' ? item.sentence.trim() : '',
+                    feedback: typeof item?.feedback === 'string' ? item.feedback.trim() : '',
+                    suggested: this._cleanAlternativeText(typeof item?.suggested === 'string' ? item.suggested : ''),
+                    why: typeof item?.why === 'string' ? item.why.trim() : '',
+                }))
+                .filter((item) => item.sentence && item.feedback)
+            : [];
+
+        if (normalizedFromModel.length > 0) {
+            return normalizedFromModel.slice(0, 6).map((item) => ({
+                ...item,
+                suggested: item.suggested && this._isMinorSentenceDifference(item.sentence, item.suggested) ? '' : item.suggested,
+            }));
+        }
+
+        if (sourceSentences.length === 0) {
+            return [{
+                sentence: String(sourceText || '').trim(),
+                feedback: baseFeedback,
+                suggested: '',
+                why: '',
+            }];
+        }
+
+        return sourceSentences.slice(0, 6).map((sentence, index) => ({
+            sentence,
+            feedback: index === 0 ? baseFeedback : 'Clear meaning. You can keep this sentence as is.',
+            suggested: index === 0 ? this._cleanAlternativeText(fallbackSuggested || '') : '',
+            why: index === 0 ? String(fallbackWhy || '').trim() : '',
+        }));
     }
 
     _getDemoResponse() {

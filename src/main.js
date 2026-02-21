@@ -373,6 +373,7 @@ function formatGrammarReview(review) {
   const corrected = escapeHtml(review.correctedText || '');
   const edits = Array.isArray(review.edits) ? review.edits : [];
   const feedback = escapeHtml(review.feedback || 'Looks good overall.');
+  const sentenceFeedback = Array.isArray(review.sentenceFeedback) ? review.sentenceFeedback : [];
   const naturalAlternative = escapeHtml(review.naturalAlternative || '');
   const naturalReason = escapeHtml(review.naturalReason || '');
 
@@ -390,10 +391,28 @@ function formatGrammarReview(review) {
     `;
   }).join('');
 
+  const sentenceFeedbackHtml = sentenceFeedback.length > 0
+    ? sentenceFeedback.slice(0, 6).map((item, index) => {
+      const sentence = escapeHtml(String(item?.sentence || ''));
+      const sentenceNote = escapeHtml(String(item?.feedback || ''));
+      const suggested = escapeHtml(String(item?.suggested || ''));
+      const why = escapeHtml(String(item?.why || ''));
+      return `
+        <div class="grammar-sentence-item">
+          <div class="grammar-sentence-label">Sentence ${index + 1}</div>
+          <div class="grammar-sentence-source">${sentence.replace(/\r\n|\r|\n/g, '<br>')}</div>
+          <div class="grammar-sentence-feedback">${sentenceNote}</div>
+          ${suggested ? `<div class="grammar-sentence-suggested">Try: ${suggested.replace(/\r\n|\r|\n/g, '<br>')}</div>` : ''}
+          ${why ? `<div class="grammar-sentence-why">${why}</div>` : ''}
+        </div>
+      `;
+    }).join('')
+    : `<div class="grammar-feedback-text">${feedback}</div>`;
+
   return `
     <div class="grammar-review">
       <div class="grammar-title">Native feedback</div>
-      <div class="grammar-feedback-text">${feedback}</div>
+      ${sentenceFeedbackHtml}
       ${editsHtml}
       ${review.hasErrors ? `
         <div class="grammar-corrected-label">Corrected sentence</div>
