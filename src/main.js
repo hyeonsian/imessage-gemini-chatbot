@@ -24,6 +24,7 @@ const clearChat = document.getElementById('clearChat');
 const clearBtn = document.getElementById('clearBtn');
 const contactStatus = document.getElementById('contactStatus');
 const enableNotifications = document.getElementById('enableNotifications');
+const testPushBtn = document.getElementById('testPushBtn');
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 

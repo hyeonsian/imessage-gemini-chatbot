@@ -11,18 +11,18 @@ webpush.setVapidDetails(
 export default async function handler(req, res) {
     // 1. Check if it's the right time (9 AM - 10 PM KST)
     // Vercel Cron uses UTC. KST is UTC+9.
-    // 9 AM KST = 00:00 UTC
-    // 10 PM KST = 13:00 UTC
     const now = new Date();
     const hourKST = (now.getUTCHours() + 9) % 24;
 
-    if (hourKST < 9 || hourKST >= 22) {
+    const isTest = req.query?.test === 'true';
+
+    if (!isTest && (hourKST < 9 || hourKST >= 22)) {
         return res.status(200).json({ skipped: 'Outside active hours (09:00 - 22:00)' });
     }
 
     // 2. Random logic: ~2.3 times a day
     // If run every hour (13 hours total), 2.3/13 = ~17% chance per hour
-    if (Math.random() > 0.17) {
+    if (!isTest && Math.random() > 0.17) {
         return res.status(200).json({ skipped: 'Random skip' });
     }
 
