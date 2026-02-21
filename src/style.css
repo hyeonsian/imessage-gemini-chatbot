@@ -1076,6 +1076,24 @@ body {
   color: white;
   margin-bottom: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+}
+
+.contact-avatar {
+  width: 32px;
+  height: 32px;
+  background: #a2a2f0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: white;
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
 }
 
 .change-avatar-btn {

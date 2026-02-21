@@ -35,6 +35,7 @@ const aiNameInput = document.getElementById('aiNameInput');
 const profileSystemPrompt = document.getElementById('profileSystemPrompt');
 const saveProfileBtn = document.getElementById('saveProfileBtn');
 const changeAvatarBtn = document.getElementById('changeAvatarBtn');
+const avatarInput = document.getElementById('avatarInput');
 const headerAvatar = document.getElementById('headerAvatar');
 const profileAvatarLarge = document.getElementById('profileAvatarLarge');
 
@@ -142,8 +143,25 @@ function updateAIProfileUI() {
 
   contactName.textContent = aiName;
   aiNameInput.value = aiName;
-  headerAvatar.textContent = aiAvatar;
-  profileAvatarLarge.textContent = aiAvatar;
+
+  // Update header avatar
+  if (aiAvatar.startsWith('data:image')) {
+    headerAvatar.style.backgroundImage = `url(${aiAvatar})`;
+    headerAvatar.textContent = '';
+  } else {
+    headerAvatar.style.backgroundImage = 'none';
+    headerAvatar.textContent = aiAvatar;
+  }
+
+  // Update modal avatar
+  if (aiAvatar.startsWith('data:image')) {
+    profileAvatarLarge.style.backgroundImage = `url(${aiAvatar})`;
+    profileAvatarLarge.textContent = '';
+  } else {
+    profileAvatarLarge.style.backgroundImage = 'none';
+    profileAvatarLarge.textContent = aiAvatar;
+  }
+
   profileSystemPrompt.value = gemini.systemPrompt;
 }
 
@@ -409,7 +427,12 @@ function setupEventListeners() {
     saveProfileBtn.addEventListener('click', () => {
       const newName = aiNameInput.value.trim() || 'AI Assistant';
       const newPrompt = profileSystemPrompt.value.trim();
-      const newAvatar = profileAvatarLarge.textContent;
+
+      // Get avatar: either DataURL from background-image or text content
+      let newAvatar = profileAvatarLarge.textContent;
+      if (profileAvatarLarge.style.backgroundImage && profileAvatarLarge.style.backgroundImage !== 'none') {
+        newAvatar = profileAvatarLarge.style.backgroundImage.slice(5, -2); // Remove url("")
+      }
 
       localStorage.setItem('ai_name', newName);
       localStorage.setItem('ai_avatar', newAvatar);
@@ -421,12 +444,31 @@ function setupEventListeners() {
     });
   }
 
-  // Change avatar logic
+  // Change avatar logic (Photo / Emoji)
   if (changeAvatarBtn) {
     changeAvatarBtn.addEventListener('click', () => {
-      const emoji = prompt('새로운 아이콘(이모지 등)을 입력하세요:', profileAvatarLarge.textContent);
-      if (emoji) {
-        profileAvatarLarge.textContent = emoji;
+      if (confirm('갤러리에서 사진을 선택하시겠습니까? (취소하면 이모지를 입력할 수 있습니다)')) {
+        avatarInput.click();
+      } else {
+        const emoji = prompt('새로운 아이콘(이모지 등)을 입력하세요:', profileAvatarLarge.textContent || '✦');
+        if (emoji) {
+          profileAvatarLarge.style.backgroundImage = 'none';
+          profileAvatarLarge.textContent = emoji;
+        }
+      }
+    });
+  }
+
+  if (avatarInput) {
+    avatarInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          profileAvatarLarge.style.backgroundImage = `url(${event.target.result})`;
+          profileAvatarLarge.textContent = '';
+        };
+        reader.readAsDataURL(file);
       }
     });
   }
