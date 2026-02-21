@@ -988,9 +988,26 @@ body {
 /* ===========================
    Profile Detail Modal (iOS Style)
    =========================== */
+.header-center {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.header-center:active {
+  opacity: 0.7;
+}
+
 .profile-modal {
   align-items: flex-end;
   /* Slide up from bottom on mobile */
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s;
+}
+
+.profile-modal.active {
+  opacity: 1;
+  visibility: visible;
 }
 
 .profile-modal-content {
@@ -1057,8 +1074,17 @@ body {
   justify-content: center;
   font-size: 40px;
   color: white;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.change-avatar-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 15px;
+  margin-bottom: 16px;
+  cursor: pointer;
 }
 
 .profile-name-input {

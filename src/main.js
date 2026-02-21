@@ -34,6 +34,7 @@ const profileClose = document.getElementById('profileClose');
 const aiNameInput = document.getElementById('aiNameInput');
 const profileSystemPrompt = document.getElementById('profileSystemPrompt');
 const saveProfileBtn = document.getElementById('saveProfileBtn');
+const changeAvatarBtn = document.getElementById('changeAvatarBtn');
 const headerAvatar = document.getElementById('headerAvatar');
 const profileAvatarLarge = document.getElementById('profileAvatarLarge');
 
@@ -408,13 +409,25 @@ function setupEventListeners() {
     saveProfileBtn.addEventListener('click', () => {
       const newName = aiNameInput.value.trim() || 'AI Assistant';
       const newPrompt = profileSystemPrompt.value.trim();
+      const newAvatar = profileAvatarLarge.textContent;
 
       localStorage.setItem('ai_name', newName);
+      localStorage.setItem('ai_avatar', newAvatar);
       gemini.setSystemPrompt(newPrompt);
 
       updateAIProfileUI();
       profileModal.classList.remove('active');
       showToast('프로필 정보가 저장되었습니다 ✓');
+    });
+  }
+
+  // Change avatar logic
+  if (changeAvatarBtn) {
+    changeAvatarBtn.addEventListener('click', () => {
+      const emoji = prompt('새로운 아이콘(이모지 등)을 입력하세요:', profileAvatarLarge.textContent);
+      if (emoji) {
+        profileAvatarLarge.textContent = emoji;
+      }
     });
   }
 
