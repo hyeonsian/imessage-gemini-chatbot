@@ -350,16 +350,18 @@ function updateSendButton() {
 // Push Notifications
 // ===========================
 async function requestNotificationPermission(manual = false) {
-  const isNotificationSupported = 'Notification' in window;
-  const isPushSupported = 'serviceWorker' in navigator && 'PushManager' in window;
-
-  if (!isNotificationSupported && !isPushSupported) {
-    console.warn('Notifications/Push not supported in this browser.');
+  if (!('serviceWorker' in navigator)) {
+    console.warn('Service Worker not supported');
     return 'unsupported';
   }
 
-  if (!('serviceWorker' in navigator)) {
-    console.warn('Service Worker not supported or not ready.');
+  // On iOS PWA, Notification might be available but 'Notification' in window might be false in some contexts
+  // or PushManager might be the primary way to check.
+  const hasNotification = 'Notification' in window;
+  const hasPush = 'PushManager' in window;
+
+  if (!hasNotification && !hasPush) {
+    console.warn('Neither Notification nor PushManager supported');
     return 'unsupported';
   }
 
