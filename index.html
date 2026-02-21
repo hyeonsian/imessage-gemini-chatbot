@@ -2,10 +2,6 @@
 <html lang="ko">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta charset="UTF-8">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -82,9 +78,87 @@
             </div>
         </footer>
     </div>
+
+    <!-- AI Profile Detail Modal (iOS Style) -->
+    <div class="modal profile-modal" id="profileModal">
+        <div class="profile-modal-content">
+            <div class="profile-modal-header">
+                <button class="profile-close" id="profileClose">완료</button>
+                <div class="profile-header-title">정보</div>
+            </div>
+
+            <div class="profile-hero">
+                <div class="profile-avatar-large" id="profileAvatarLarge">✦</div>
+                <input type="text" class="profile-name-input" id="aiNameInput" placeholder="AI 비서 이름">
+                <div class="profile-actions">
+                    <div class="action-item">
+                        <div class="action-icon">📞</div>전화
+                    </div>
+                    <div class="action-item">
+                        <div class="action-icon">📹</div>비디오
+                    </div>
+                    <div class="action-item">
+                        <div class="action-icon">✉️</div>메일
+                    </div>
+                </div>
+            </div>
+
+            <div class="profile-sections">
+                <div class="profile-section">
+                    <div class="section-title">시스템 프롬프트</div>
+                    <div class="section-group">
+                        <textarea class="profile-prompt-input" id="profileSystemPrompt"
+                            placeholder="AI의 성격을 설정해보세요."></textarea>
+                    </div>
+                </div>
+
+                <div class="profile-section">
+                    <div class="section-group">
+                        <div class="section-row">
+                            <span>알림 소리</span>
+                            <div class="ios-switch"></div>
+                        </div>
+                        <div class="section-row">
+                            <span>읽음 확인 보내기</span>
+                            <div class="ios-switch active"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="profile-save-btn" id="saveProfileBtn">변경사항 저장</button>
+            </div>
+        </div>
     </div>
 
-    <script type="module" src="/src/main.js"></script>
+    <!-- Settings Modal (Legacy/Global) -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>설정</h3>
+                <button class="close-btn" id="modalClose">&times;</button>
+            </div>
+            <div class="settings-group">
+                <label for="modelSelect">모델 선택</label>
+                <select id="modelSelect">
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (추천)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                </select>
+            </div>
+
+            <div class="settings-footer">
+                <button class="danger-btn" id="clearChat">대화 내역 삭제</button>
+                <button class="primary-btn" id="saveSettings">모델 설정 저장</button>
+            </div>
+
+            <div class="pwa-settings">
+                <h4>PWA 설정</h4>
+                <button id="enableNotifications" class="secondary-btn">알림 활성화</button>
+                <button id="testPushBtn" class="secondary-btn">테스트 알림 발송</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
 </body>
 
 </html>
