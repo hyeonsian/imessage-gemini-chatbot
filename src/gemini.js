@@ -66,11 +66,14 @@ export class GeminiAPI {
             return {
                 hasErrors: false,
                 correctedText: text,
-                edits: []
+                edits: [],
+                feedback: 'Sounds natural for daily conversation.',
+                naturalAlternative: '',
+                naturalReason: ''
             };
         }
 
-        const prompt = `You are an English grammar checker for language learners.
+        const prompt = `You are an English writing coach for language learners.
 Analyze the user's sentence and return ONLY valid JSON (no markdown, no extra text) in this exact schema:
 {
   "hasErrors": boolean,
@@ -81,15 +84,22 @@ Analyze the user's sentence and return ONLY valid JSON (no markdown, no extra te
       "right": "string",
       "reason": "short string"
     }
-  ]
+  ],
+  "feedback": "string",
+  "naturalAlternative": "string",
+  "naturalReason": "short string"
 }
 Rules:
 - correctedText must be the full corrected sentence.
 - If there is no grammar issue, set hasErrors=false and edits=[].
 - Keep the original meaning and tone.
-- Focus on grammar/natural phrasing, not style preference.
+- Give short native-speaker feedback in "feedback" (max 14 words).
+- If the sentence is already natural enough, set naturalAlternative="" and naturalReason="".
+- If a more natural everyday phrasing exists, set naturalAlternative to ONE short, common expression.
+- naturalAlternative must be easy everyday English (CEFR A2-B1), avoid idioms/jargon.
 - Do NOT flag capitalization-only changes.
 - Do NOT flag missing/extra sentence-ending punctuation (., !, ?).
+- Never prepend meta phrases like "I mean," or "A more natural way...".
 
 Sentence:
 "${text}"`;
@@ -132,18 +142,36 @@ Sentence:
             const correctedText = typeof parsed?.correctedText === 'string' && parsed.correctedText.trim()
                 ? parsed.correctedText.trim()
                 : text;
+            const feedback = typeof parsed?.feedback === 'string' && parsed.feedback.trim()
+                ? parsed.feedback.trim()
+                : 'Looks good overall.';
+            const naturalAlternativeRaw = typeof parsed?.naturalAlternative === 'string'
+                ? parsed.naturalAlternative
+                : '';
+            const naturalAlternative = this._cleanAlternativeText(naturalAlternativeRaw);
+            const naturalReason = typeof parsed?.naturalReason === 'string' && parsed.naturalReason.trim()
+                ? parsed.naturalReason.trim()
+                : '';
+            const hasUsableNaturalAlternative = naturalAlternative
+                && !this._isMinorSentenceDifference(text, naturalAlternative);
 
             return {
                 hasErrors,
                 correctedText: hasErrors ? correctedText : text,
-                edits: normalizedEdits
+                edits: normalizedEdits,
+                feedback,
+                naturalAlternative: hasUsableNaturalAlternative ? naturalAlternative : '',
+                naturalReason: hasUsableNaturalAlternative ? naturalReason : ''
             };
         } catch (error) {
             console.error('Grammar check error:', error);
             return {
                 hasErrors: false,
                 correctedText: text,
-                edits: []
+                edits: [],
+                feedback: 'Looks good overall.',
+                naturalAlternative: '',
+                naturalReason: ''
             };
         }
     }
@@ -165,9 +193,12 @@ Return ONLY valid JSON (no markdown, no extra text) with this schema:
 Rules:
 - Provide exactly 3 alternatives.
 - Keep the original intent.
-- Each "text" must be natural conversational English.
+- Each "text" must be very common spoken English used by natives daily.
+- Keep wording simple (CEFR A2-B1), short, and easy to reuse.
+- Avoid advanced vocabulary, idioms, figurative expressions, and formal business wording.
 - Make each option meaningfully different in tone/nuance.
 - Keep each nuance short (max 12 words).
+- Never prepend meta phrases like "I mean," or "A more natural way...".
 
 Sentence:
 "${text}"`;
@@ -211,12 +242,13 @@ Sentence:
             }
 
             // 2nd try: robust delimiter-based plain text fallback
-            const fallbackPrompt = `Rewrite this sentence into 3 native alternatives.
+            const fallbackPrompt = `Rewrite this sentence into 3 very common native alternatives.
 Output format (exactly 3 lines):
 1) <sentence> || <tone> || <short nuance>
 2) <sentence> || <tone> || <short nuance>
 3) <sentence> || <tone> || <short nuance>
 No extra lines.
+Use easy everyday English only. No "I mean," or meta-intro phrases.
 
 Sentence:
 "${text}"`;
@@ -410,7 +442,7 @@ Sentence:
         return alternatives
             .filter((item) => item && typeof item.text === 'string')
             .map((item) => ({
-                text: item.text.trim(),
+                text: this._cleanAlternativeText(item.text),
                 tone: typeof item.tone === 'string' && item.tone.trim() ? item.tone.trim() : 'Natural',
                 nuance: typeof item.nuance === 'string' && item.nuance.trim() ? item.nuance.trim() : 'Natural phrasing'
             }))
@@ -439,6 +471,27 @@ Sentence:
 
         // Ignore edits that are only casing differences and/or sentence-ending punctuation.
         return wrongCore.toLowerCase() === rightCore.toLowerCase();
+    }
+
+    _cleanAlternativeText(value) {
+        if (typeof value !== 'string') return '';
+        const cleaned = value
+            .trim()
+            .replace(/^"(.*)"$/s, '$1')
+            .replace(/^(i mean[,:]?\s*)/i, '')
+            .replace(/^(a more natural way(?: to say this)? is[,:]?\s*)/i, '')
+            .replace(/^(more naturally[,:]?\s*)/i, '')
+            .trim();
+        return cleaned;
+    }
+
+    _isMinorSentenceDifference(source, target) {
+        const normalize = (value) => String(value || '')
+            .trim()
+            .replace(/[.!?]+$/g, '')
+            .replace(/\s+/g, ' ')
+            .toLowerCase();
+        return normalize(source) === normalize(target);
     }
 
     _getDemoResponse() {

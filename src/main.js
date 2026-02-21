@@ -332,18 +332,17 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
           saveMessages();
         }
 
+        bubble.innerHTML = formatGrammarReview(review);
+        bubble.classList.add('is-reviewed');
+        removeGrammarOkIndicator(bubble);
+
         if (review.hasErrors) {
-          bubble.innerHTML = formatGrammarReview(review);
-          bubble.classList.add('is-reviewed');
           bubble.classList.add('has-grammar-errors');
           bubble.classList.remove('grammar-ok');
-          removeGrammarOkIndicator(bubble);
           attachGrammarSaveButton(bubble, review, bubble.dataset.original, msg?.sentAt || msg?.createdAt || null);
         } else {
           bubble.classList.remove('has-grammar-errors');
           bubble.classList.add('grammar-ok');
-          appendGrammarOkIndicator(bubble);
-          showToast('문법 오류가 없어요 ✓');
         }
 
         bubble.classList.remove('translating');
@@ -373,6 +372,9 @@ function formatMessage(text) {
 function formatGrammarReview(review) {
   const corrected = escapeHtml(review.correctedText || '');
   const edits = Array.isArray(review.edits) ? review.edits : [];
+  const feedback = escapeHtml(review.feedback || 'Looks good overall.');
+  const naturalAlternative = escapeHtml(review.naturalAlternative || '');
+  const naturalReason = escapeHtml(review.naturalReason || '');
 
   const editsHtml = edits.slice(0, 4).map((edit) => {
     const wrong = escapeHtml(edit.wrong || '');
@@ -390,13 +392,21 @@ function formatGrammarReview(review) {
 
   return `
     <div class="grammar-review">
-      <div class="grammar-title">문법 교정</div>
+      <div class="grammar-title">Native feedback</div>
+      <div class="grammar-feedback-text">${feedback}</div>
       ${editsHtml}
-      <div class="grammar-corrected-label">수정 문장</div>
-      <div class="grammar-corrected-text">${corrected.replace(/\r\n|\r|\n/g, '<br>')}</div>
-      <button class="grammar-save-btn" type="button" aria-label="수정 문장을 내 사전에 추가">
-        + Save corrected sentence
-      </button>
+      ${review.hasErrors ? `
+        <div class="grammar-corrected-label">Corrected sentence</div>
+        <div class="grammar-corrected-text">${corrected.replace(/\r\n|\r|\n/g, '<br>')}</div>
+        <button class="grammar-save-btn" type="button" aria-label="수정 문장을 내 사전에 추가">
+          + Save corrected sentence
+        </button>
+      ` : ''}
+      ${naturalAlternative ? `
+        <div class="grammar-corrected-label">More natural way</div>
+        <div class="grammar-corrected-text">${naturalAlternative.replace(/\r\n|\r|\n/g, '<br>')}</div>
+        ${naturalReason ? `<div class="grammar-reason">${naturalReason}</div>` : ''}
+      ` : ''}
     </div>
   `;
 }

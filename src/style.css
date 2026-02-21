@@ -619,6 +619,12 @@ body.native-sheet-open {
   font-weight: 700;
 }
 
+.grammar-feedback-text {
+  font-size: 13px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.94);
+}
+
 .grammar-edit-row {
   display: flex;
   align-items: baseline;
