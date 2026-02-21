@@ -1398,20 +1398,23 @@ body.native-sheet-open {
   transition: transform 0.18s ease;
   position: relative;
   z-index: 2;
+  overflow: visible;
 }
 
 .dictionary-entry-swipe {
   position: relative;
-  overflow: hidden;
-  border-radius: 14px;
+  overflow-x: hidden;
+  overflow-y: visible;
+  border-radius: 0;
 }
 
 .dictionary-delete-btn {
   position: absolute;
   top: 0;
+  bottom: 0;
   right: 0;
   width: 72px;
-  height: 100%;
+  height: auto;
   border: none;
   background: #ff3b30;
   color: #fff;
@@ -1421,6 +1424,8 @@ body.native-sheet-open {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-top-right-radius: 14px;
+  border-bottom-right-radius: 14px;
 }
 
 .dictionary-entry-swipe.revealed .dictionary-entry {
