@@ -35,6 +35,7 @@ let chatSearchState = {
   query: '',
   matches: [],
   activeIndex: -1,
+  visible: false,
 };
 let dictionaryFilterState = {
   grammar: true,
@@ -46,6 +47,8 @@ let dictionaryFilterState = {
 // ===========================
 const chatMessages = document.getElementById('chatMessages');
 const appRoot = document.getElementById('app');
+const chatSearchBar = document.getElementById('chatSearchBar');
+const searchToggleBtn = document.getElementById('searchToggleBtn');
 const chatSearchInput = document.getElementById('chatSearchInput');
 const chatSearchCount = document.getElementById('chatSearchCount');
 const chatSearchPrevBtn = document.getElementById('chatSearchPrevBtn');
@@ -376,9 +379,71 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
 }
 
 function clearChatSearchHighlights() {
+  chatMessages?.querySelectorAll('mark.chat-search-hit').forEach((mark) => {
+    const parent = mark.parentNode;
+    if (!parent) return;
+    parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+    parent.normalize();
+  });
   chatMessages?.querySelectorAll('.bubble.search-match, .bubble.search-match-active').forEach((bubble) => {
     bubble.classList.remove('search-match');
     bubble.classList.remove('search-match-active');
+  });
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function highlightQueryInBubble(bubble, rawQuery) {
+  if (!bubble || !rawQuery) return;
+  const query = rawQuery.trim();
+  if (!query) return;
+
+  const matcher = new RegExp(escapeRegExp(query), 'gi');
+  const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+      const parentEl = node.parentElement;
+      if (!parentEl) return NodeFilter.FILTER_REJECT;
+      if (parentEl.closest('button')) return NodeFilter.FILTER_REJECT;
+      if (parentEl.closest('mark.chat-search-hit')) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    textNodes.push(node);
+  }
+
+  textNodes.forEach((textNode) => {
+    const text = textNode.nodeValue || '';
+    matcher.lastIndex = 0;
+    if (!matcher.test(text)) return;
+    matcher.lastIndex = 0;
+
+    const frag = document.createDocumentFragment();
+    let lastIndex = 0;
+    let match;
+    while ((match = matcher.exec(text)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (start > lastIndex) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex, start)));
+      }
+      const mark = document.createElement('mark');
+      mark.className = 'chat-search-hit';
+      mark.textContent = text.slice(start, end);
+      frag.appendChild(mark);
+      lastIndex = end;
+      if (match.index === matcher.lastIndex) matcher.lastIndex += 1;
+    }
+    if (lastIndex < text.length) {
+      frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
+    textNode.parentNode?.replaceChild(frag, textNode);
   });
 }
 
@@ -431,9 +496,13 @@ function refreshChatSearchResults() {
   }
 
   const bubbles = Array.from(chatMessages.querySelectorAll('.message .bubble'));
-  chatSearchState.matches = bubbles.filter((bubble) =>
-    bubble.textContent?.toLowerCase().includes(query)
-  );
+  chatSearchState.matches = bubbles.filter((bubble) => {
+    const hit = bubble.textContent?.toLowerCase().includes(query);
+    if (hit) {
+      highlightQueryInBubble(bubble, chatSearchState.query);
+    }
+    return hit;
+  });
 
   if (chatSearchState.matches.length > 0) {
     focusChatSearchMatch(0, { scroll: false });
@@ -446,6 +515,21 @@ function moveChatSearchResult(direction) {
   if (!chatSearchState.matches.length) return;
   const baseIndex = chatSearchState.activeIndex >= 0 ? chatSearchState.activeIndex : 0;
   focusChatSearchMatch(baseIndex + direction);
+}
+
+function setChatSearchVisible(visible) {
+  chatSearchState.visible = visible;
+  if (chatSearchBar) chatSearchBar.hidden = !visible;
+  if (!visible) {
+    chatSearchState.query = '';
+    if (chatSearchInput) chatSearchInput.value = '';
+    refreshChatSearchResults();
+    return;
+  }
+  if (chatSearchInput) {
+    requestAnimationFrame(() => chatSearchInput.focus());
+  }
+  refreshChatSearchResults();
 }
 
 function formatMessage(text) {
@@ -1189,6 +1273,12 @@ function loadSettings() {
 // Event Listeners
 // ===========================
 function setupEventListeners() {
+  if (searchToggleBtn) {
+    searchToggleBtn.addEventListener('click', () => {
+      setChatSearchVisible(!chatSearchState.visible);
+    });
+  }
+
   if (chatSearchInput) {
     chatSearchInput.addEventListener('input', () => {
       chatSearchState.query = chatSearchInput.value || '';
@@ -1199,6 +1289,9 @@ function setupEventListeners() {
       if (event.key === 'Enter') {
         event.preventDefault();
         moveChatSearchResult(event.shiftKey ? -1 : 1);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        setChatSearchVisible(false);
       }
     });
   }

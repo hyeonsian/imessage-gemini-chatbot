@@ -347,6 +347,11 @@ body.native-sheet-open {
   justify-content: center;
 }
 
+.header-right {
+  width: auto;
+  gap: 2px;
+}
+
 .icon-btn {
   background: transparent;
   border: none;
@@ -580,6 +585,13 @@ body.native-sheet-open {
   box-shadow:
     0 0 0 2px rgba(255, 214, 10, 0.95) inset,
     0 0 0 4px rgba(255, 214, 10, 0.18);
+}
+
+.chat-search-hit {
+  background: rgba(255, 214, 10, 0.9);
+  color: #1f1600;
+  padding: 0 1px;
+  border-radius: 4px;
 }
 
 /* Blur effect for translation transition */
