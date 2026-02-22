@@ -520,6 +520,7 @@ function moveChatSearchResult(direction) {
 function setChatSearchVisible(visible) {
   chatSearchState.visible = visible;
   if (chatSearchBar) chatSearchBar.hidden = !visible;
+  if (searchToggleBtn) searchToggleBtn.setAttribute('aria-pressed', visible ? 'true' : 'false');
   if (!visible) {
     chatSearchState.query = '';
     if (chatSearchInput) chatSearchInput.value = '';
@@ -1275,7 +1276,8 @@ function loadSettings() {
 function setupEventListeners() {
   if (searchToggleBtn) {
     searchToggleBtn.addEventListener('click', () => {
-      setChatSearchVisible(!chatSearchState.visible);
+      const currentlyVisible = chatSearchBar ? !chatSearchBar.hidden : chatSearchState.visible;
+      setChatSearchVisible(!currentlyVisible);
     });
   }
 
