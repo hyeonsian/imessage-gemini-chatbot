@@ -442,6 +442,71 @@ body.native-sheet-open {
   line-height: 1.2;
 }
 
+.chat-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 8px;
+  background: var(--header-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.chat-search-input-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(120, 120, 128, 0.16);
+  border: 1px solid rgba(120, 120, 128, 0.15);
+  border-radius: 12px;
+  padding: 7px 10px;
+}
+
+.chat-search-input-wrap input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+}
+
+.chat-search-input-wrap input::placeholder {
+  color: var(--text-secondary);
+}
+
+.chat-search-count {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.chat-search-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-search-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 120, 128, 0.18);
+  background: rgba(120, 120, 128, 0.14);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.chat-search-btn:disabled {
+  opacity: 0.4;
+}
+
 /* ===========================
    Messages Area
    =========================== */
@@ -505,6 +570,16 @@ body.native-sheet-open {
   transition: filter 0.4s ease, opacity 0.3s ease, transform 0.3s ease;
   cursor: pointer;
   /* Interactive for translation */
+}
+
+.bubble.search-match {
+  box-shadow: 0 0 0 2px rgba(255, 214, 10, 0.45) inset;
+}
+
+.bubble.search-match-active {
+  box-shadow:
+    0 0 0 2px rgba(255, 214, 10, 0.95) inset,
+    0 0 0 4px rgba(255, 214, 10, 0.18);
 }
 
 /* Blur effect for translation transition */

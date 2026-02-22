@@ -31,6 +31,11 @@ let backSwipeState = {
   startY: 0,
   deltaX: 0,
 };
+let chatSearchState = {
+  query: '',
+  matches: [],
+  activeIndex: -1,
+};
 let dictionaryFilterState = {
   grammar: true,
   native: true,
@@ -41,6 +46,10 @@ let dictionaryFilterState = {
 // ===========================
 const chatMessages = document.getElementById('chatMessages');
 const appRoot = document.getElementById('app');
+const chatSearchInput = document.getElementById('chatSearchInput');
+const chatSearchCount = document.getElementById('chatSearchCount');
+const chatSearchPrevBtn = document.getElementById('chatSearchPrevBtn');
+const chatSearchNextBtn = document.getElementById('chatSearchNextBtn');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const settingsBtn = document.getElementById('settingsBtn');
@@ -232,6 +241,7 @@ function renderMessages() {
     appendMessageBubble(msg.role, msg.text, msg.time, false, msg.translation || null, index);
   });
 
+  refreshChatSearchResults();
   scrollToBottom();
 }
 
@@ -276,6 +286,7 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
         }
 
         bubble.classList.remove('translating');
+        refreshChatSearchResults();
       }, 400); // Match CSS transition timing
     });
   }
@@ -308,6 +319,7 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
           bubble.classList.remove('has-grammar-errors');
           bubble.classList.remove('grammar-ok');
           bubble.classList.remove('translating');
+          refreshChatSearchResults();
           return;
         }
 
@@ -346,6 +358,7 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
         }
 
         bubble.classList.remove('translating');
+        refreshChatSearchResults();
       }, 400);
     });
   }
@@ -358,7 +371,81 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
   msgDiv.appendChild(timeEl);
   chatMessages.appendChild(msgDiv);
 
+  refreshChatSearchResults();
   if (animate) scrollToBottom();
+}
+
+function clearChatSearchHighlights() {
+  chatMessages?.querySelectorAll('.bubble.search-match, .bubble.search-match-active').forEach((bubble) => {
+    bubble.classList.remove('search-match');
+    bubble.classList.remove('search-match-active');
+  });
+}
+
+function updateChatSearchUi() {
+  const total = chatSearchState.matches.length;
+  const current = total > 0 ? chatSearchState.activeIndex + 1 : 0;
+  if (chatSearchCount) {
+    chatSearchCount.textContent = `${current}/${total}`;
+  }
+  if (chatSearchPrevBtn) chatSearchPrevBtn.disabled = total === 0;
+  if (chatSearchNextBtn) chatSearchNextBtn.disabled = total === 0;
+}
+
+function focusChatSearchMatch(index, { scroll = true } = {}) {
+  if (!chatSearchState.matches.length) {
+    chatSearchState.activeIndex = -1;
+    updateChatSearchUi();
+    return;
+  }
+
+  const nextIndex = ((index % chatSearchState.matches.length) + chatSearchState.matches.length) % chatSearchState.matches.length;
+  chatSearchState.activeIndex = nextIndex;
+
+  chatSearchState.matches.forEach((bubble, i) => {
+    bubble.classList.toggle('search-match-active', i === nextIndex);
+    bubble.classList.toggle('search-match', i !== nextIndex);
+  });
+
+  if (scroll) {
+    chatSearchState.matches[nextIndex].scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+      inline: 'nearest',
+    });
+  }
+  updateChatSearchUi();
+}
+
+function refreshChatSearchResults() {
+  if (!chatMessages) return;
+  const query = String(chatSearchState.query || '').trim().toLowerCase();
+
+  clearChatSearchHighlights();
+  chatSearchState.matches = [];
+  chatSearchState.activeIndex = -1;
+
+  if (!query) {
+    updateChatSearchUi();
+    return;
+  }
+
+  const bubbles = Array.from(chatMessages.querySelectorAll('.message .bubble'));
+  chatSearchState.matches = bubbles.filter((bubble) =>
+    bubble.textContent?.toLowerCase().includes(query)
+  );
+
+  if (chatSearchState.matches.length > 0) {
+    focusChatSearchMatch(0, { scroll: false });
+  } else {
+    updateChatSearchUi();
+  }
+}
+
+function moveChatSearchResult(direction) {
+  if (!chatSearchState.matches.length) return;
+  const baseIndex = chatSearchState.activeIndex >= 0 ? chatSearchState.activeIndex : 0;
+  focusChatSearchMatch(baseIndex + direction);
 }
 
 function formatMessage(text) {
@@ -1102,6 +1189,28 @@ function loadSettings() {
 // Event Listeners
 // ===========================
 function setupEventListeners() {
+  if (chatSearchInput) {
+    chatSearchInput.addEventListener('input', () => {
+      chatSearchState.query = chatSearchInput.value || '';
+      refreshChatSearchResults();
+    });
+
+    chatSearchInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        moveChatSearchResult(event.shiftKey ? -1 : 1);
+      }
+    });
+  }
+
+  if (chatSearchPrevBtn) {
+    chatSearchPrevBtn.addEventListener('click', () => moveChatSearchResult(-1));
+  }
+
+  if (chatSearchNextBtn) {
+    chatSearchNextBtn.addEventListener('click', () => moveChatSearchResult(1));
+  }
+
   // Send button
   sendBtn.addEventListener('click', sendMessage);
 
