@@ -134,6 +134,7 @@ function init() {
   renderMessages();
   loadSettings();
   setupEventListeners();
+  setChatSearchVisible(false);
   setupBackSwipeGesture();
   updateStatus();
   updateAIProfileUI();

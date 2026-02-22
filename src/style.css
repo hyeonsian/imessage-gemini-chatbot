@@ -458,6 +458,10 @@ body.native-sheet-open {
   border-bottom: 1px solid var(--border-color);
 }
 
+.chat-search-bar[hidden] {
+  display: none !important;
+}
+
 .chat-search-input-wrap {
   flex: 1;
   min-width: 0;
