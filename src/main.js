@@ -80,7 +80,12 @@ const conversationList = document.getElementById('conversationList');
 const dictionaryView = document.getElementById('dictionaryView');
 const dictionaryPageList = document.getElementById('dictionaryPageList');
 const dictionaryBackBtn = document.getElementById('dictionaryBackBtn');
+const dictionaryCategoriesBtn = document.getElementById('dictionaryCategoriesBtn');
 const dictionaryBtn = document.getElementById('dictionaryBtn');
+const dictionaryCategoryView = document.getElementById('dictionaryCategoryView');
+const dictionaryCategoryList = document.getElementById('dictionaryCategoryList');
+const dictionaryCategoryBackBtn = document.getElementById('dictionaryCategoryBackBtn');
+const dictionaryCategoryAddBtn = document.getElementById('dictionaryCategoryAddBtn');
 const contactName = document.getElementById('contactName');
 const contactStatus = document.getElementById('contactStatus');
 const enableNotifications = document.getElementById('enableNotifications');
@@ -148,6 +153,7 @@ function init() {
   updateDictionaryButtonBadge();
   closeConversationList();
   closeDictionaryPage();
+  closeDictionaryCategoryPage();
 
   renderMessages();
   loadSettings();
@@ -1447,6 +1453,7 @@ function promptCreateDictionaryCategory() {
   }
   showToast('카테고리를 만들었습니다.');
   if (dictionaryView?.classList.contains('active')) renderDictionaryPage();
+  if (dictionaryCategoryView?.classList.contains('active')) renderDictionaryCategoryManagerPage();
   return result.category;
 }
 
@@ -1454,25 +1461,6 @@ function isDictionaryCategoryVisible(entry) {
   if (dictionaryCategoryFilterId === 'all') return true;
   const ids = Array.isArray(entry?.categoryIds) ? entry.categoryIds : [];
   return ids.includes(dictionaryCategoryFilterId);
-}
-
-function renderDictionaryCategoryFilterRow() {
-  const categories = getDictionaryCategories();
-  const allActive = dictionaryCategoryFilterId === 'all' ? 'active' : '';
-  const chips = categories.map((cat) => {
-    const active = dictionaryCategoryFilterId === cat.id ? 'active' : '';
-    return `<button class="dictionary-category-chip ${active}" type="button" data-category-id="${escapeHtml(cat.id)}">${escapeHtml(cat.name)}</button>`;
-  }).join('');
-
-  return `
-    <div class="dictionary-category-tools">
-      <button class="dictionary-add-category-btn" type="button" id="dictionaryAddCategoryBtn">+ Category</button>
-    </div>
-    <div class="dictionary-category-row">
-      <button class="dictionary-category-chip ${allActive}" type="button" data-category-id="all">All</button>
-      ${chips}
-    </div>
-  `;
 }
 
 async function openDictionaryCategoryPickerSheet({ title = '카테고리에 추가하시겠습니까?' } = {}) {
@@ -1663,20 +1651,63 @@ function renderDictionaryFilterRow() {
   `;
 }
 
-function attachDictionaryCategoryHandlers() {
-  if (!dictionaryPageList) return;
-  const addBtn = dictionaryPageList.querySelector('#dictionaryAddCategoryBtn');
-  addBtn?.addEventListener('click', () => {
-    promptCreateDictionaryCategory();
-    renderDictionaryPage();
+function getDictionaryCategoryName(categoryId) {
+  if (!categoryId || categoryId === 'all') return 'All';
+  const category = getDictionaryCategories().find((cat) => cat.id === categoryId);
+  return category?.name || 'All';
+}
+
+function renderDictionaryCategoryManagerPage() {
+  if (!dictionaryCategoryList) return;
+  const categories = getDictionaryCategories();
+  const entries = getDictionaryEntries();
+  const countById = new Map();
+  entries.forEach((entry) => {
+    (Array.isArray(entry.categoryIds) ? entry.categoryIds : []).forEach((id) => {
+      countById.set(id, (countById.get(id) || 0) + 1);
+    });
   });
 
-  const chips = dictionaryPageList.querySelectorAll('.dictionary-category-chip');
-  chips.forEach((chip) => {
-    chip.addEventListener('click', () => {
-      const categoryId = chip.dataset.categoryId || 'all';
-      dictionaryCategoryFilterId = categoryId;
+  const allCount = entries.length;
+  const rows = [
+    {
+      id: 'all',
+      name: '전체',
+      count: allCount,
+    },
+    ...categories.map((cat) => ({
+      id: cat.id,
+      name: cat.name,
+      count: countById.get(cat.id) || 0,
+    }))
+  ];
+
+  dictionaryCategoryList.innerHTML = rows.length === 0 ? `
+    <div class="dictionary-empty">카테고리가 없습니다.</div>
+  ` : `
+    <div class="dictionary-category-list">
+      ${rows.map((row) => {
+        const active = dictionaryCategoryFilterId === row.id ? 'active' : '';
+        return `
+          <button class="dictionary-category-list-row ${active}" type="button" data-category-filter-id="${escapeHtml(row.id)}">
+            <span class="dictionary-category-list-name">${escapeHtml(row.name)}</span>
+            <span class="dictionary-category-list-meta">
+              <span class="dictionary-category-list-count">${row.count}</span>
+              ${dictionaryCategoryFilterId === row.id ? '<span class="dictionary-category-list-check">✓</span>' : '<span class="dictionary-category-list-chevron">›</span>'}
+            </span>
+          </button>
+        `;
+      }).join('')}
+    </div>
+  `;
+
+  dictionaryCategoryList.querySelectorAll('.dictionary-category-list-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      dictionaryCategoryFilterId = row.dataset.categoryFilterId || 'all';
+      renderDictionaryCategoryManagerPage();
       renderDictionaryPage();
+      closeDictionaryCategoryPage();
+      openDictionaryPage();
     });
   });
 }
@@ -1747,11 +1778,9 @@ function renderDictionaryPage() {
 
   if (entries.length === 0) {
     dictionaryPageList.innerHTML = `
-      ${renderDictionaryCategoryFilterRow()}
       ${renderDictionaryFilterRow()}
       <div class="dictionary-empty">아직 저장된 표현이 없습니다.</div>
     `;
-    attachDictionaryCategoryHandlers();
     attachDictionaryFilterHandlers();
     return;
   }
@@ -1781,12 +1810,16 @@ function renderDictionaryPage() {
   `).join('');
 
   dictionaryPageList.innerHTML = `
-    ${renderDictionaryCategoryFilterRow()}
+    ${dictionaryCategoryFilterId !== 'all' ? `
+      <div class="dictionary-active-category-banner">
+        <span class="dictionary-active-category-label">Category</span>
+        <span class="dictionary-active-category-name">${escapeHtml(getDictionaryCategoryName(dictionaryCategoryFilterId))}</span>
+      </div>
+    ` : ''}
     ${renderDictionaryFilterRow()}
     ${listHtml}
   `;
 
-  attachDictionaryCategoryHandlers();
   attachDictionaryFilterHandlers();
   attachDictionarySwipeHandlers();
 }
@@ -1882,12 +1915,25 @@ function formatDictionaryTimestamp(isoString) {
 function openDictionaryPage() {
   renderDictionaryPage();
   if (dictionaryView) dictionaryView.classList.add('active');
+  if (dictionaryCategoryView) dictionaryCategoryView.classList.remove('active');
   if (conversationListView) conversationListView.classList.remove('active');
   document.body.classList.add('conversation-list-open');
 }
 
 function closeDictionaryPage() {
   if (dictionaryView) dictionaryView.classList.remove('active');
+}
+
+function openDictionaryCategoryPage() {
+  renderDictionaryCategoryManagerPage();
+  if (dictionaryCategoryView) dictionaryCategoryView.classList.add('active');
+  if (dictionaryView) dictionaryView.classList.remove('active');
+  if (conversationListView) conversationListView.classList.remove('active');
+  document.body.classList.add('conversation-list-open');
+}
+
+function closeDictionaryCategoryPage() {
+  if (dictionaryCategoryView) dictionaryCategoryView.classList.remove('active');
 }
 
 // ===========================
@@ -2216,6 +2262,26 @@ function setupEventListeners() {
     });
   }
 
+  if (dictionaryCategoriesBtn) {
+    dictionaryCategoriesBtn.addEventListener('click', () => {
+      openDictionaryCategoryPage();
+    });
+  }
+
+  if (dictionaryCategoryBackBtn) {
+    dictionaryCategoryBackBtn.addEventListener('click', () => {
+      closeDictionaryCategoryPage();
+      openDictionaryPage();
+    });
+  }
+
+  if (dictionaryCategoryAddBtn) {
+    dictionaryCategoryAddBtn.addEventListener('click', () => {
+      promptCreateDictionaryCategory();
+      renderDictionaryCategoryManagerPage();
+    });
+  }
+
   // Enable Notifications button
   if (enableNotifications) {
     enableNotifications.addEventListener('click', async () => {
@@ -2293,6 +2359,7 @@ function renderConversationList() {
 function openConversationList() {
   renderConversationList();
   closeDictionaryPage();
+  closeDictionaryCategoryPage();
   if (conversationListView) conversationListView.classList.add('active');
   document.body.classList.add('conversation-list-open');
 }

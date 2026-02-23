@@ -56,16 +56,45 @@
 
     <div id="dictionaryView" class="dictionary-view">
         <header class="dictionary-page-header">
-            <button class="dictionary-back-btn" id="dictionaryBackBtn" aria-label="뒤로가기">
+            <div class="dictionary-header-left">
+                <button class="dictionary-back-btn" id="dictionaryBackBtn" aria-label="뒤로가기">
+                    <svg width="14" height="24" viewBox="0 0 14 24" fill="none">
+                        <path d="M12 2L2 12L12 22" stroke="#007aff" stroke-width="3" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                </button>
+                <button class="dictionary-header-icon-btn" id="dictionaryCategoriesBtn" aria-label="카테고리">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <path d="M5 7.5C5 6.67 5.67 6 6.5 6H17.5C18.33 6 19 6.67 19 7.5V10.5C19 11.33 18.33 12 17.5 12H6.5C5.67 12 5 11.33 5 10.5V7.5Z"
+                            stroke="#007aff" stroke-width="1.8" />
+                        <path d="M5 15.5C5 14.67 5.67 14 6.5 14H12.5C13.33 14 14 14.67 14 15.5V16.5C14 17.33 13.33 18 12.5 18H6.5C5.67 18 5 17.33 5 16.5V15.5Z"
+                            stroke="#007aff" stroke-width="1.8" />
+                        <path d="M16.5 14L19 16.5L16.5 19" stroke="#007aff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </button>
+            </div>
+            <h1 class="dictionary-page-title">내 사전</h1>
+            <div class="dictionary-page-spacer"></div>
+        </header>
+        <main class="dictionary-page-main" id="dictionaryPageList"></main>
+    </div>
+
+    <div id="dictionaryCategoryView" class="dictionary-view">
+        <header class="dictionary-page-header">
+            <button class="dictionary-back-btn" id="dictionaryCategoryBackBtn" aria-label="뒤로가기">
                 <svg width="14" height="24" viewBox="0 0 14 24" fill="none">
                     <path d="M12 2L2 12L12 22" stroke="#007aff" stroke-width="3" stroke-linecap="round"
                         stroke-linejoin="round" />
                 </svg>
             </button>
-            <h1 class="dictionary-page-title">내 사전</h1>
-            <div class="dictionary-page-spacer"></div>
+            <h1 class="dictionary-page-title">카테고리</h1>
+            <button class="dictionary-header-icon-btn" id="dictionaryCategoryAddBtn" aria-label="카테고리 추가">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 5V19M5 12H19" stroke="#007aff" stroke-width="2.2" stroke-linecap="round" />
+                </svg>
+            </button>
         </header>
-        <main class="dictionary-page-main" id="dictionaryPageList"></main>
+        <main class="dictionary-page-main dictionary-category-page-main" id="dictionaryCategoryList"></main>
     </div>
 
     <div id="app">
