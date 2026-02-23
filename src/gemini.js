@@ -40,6 +40,13 @@ export class GeminiAPI {
     }
 
     async translate(text, targetLang = 'Korean') {
+        try {
+            const server = await this._postBackend('/api/translate', { text, targetLang, model: this.model });
+            if (server?.translation) return server.translation;
+        } catch (serverError) {
+            console.warn('Translate backend fallback to direct call:', serverError);
+        }
+
         if (!this.isConfigured) return "번역 데모: " + text;
         const prompt = `Translate the following English text into natural, conversational ${targetLang}: "${text}"\nOnly provide the translation, no explanations.`;
         try {
@@ -62,6 +69,25 @@ export class GeminiAPI {
     }
 
     async checkGrammar(text) {
+        try {
+            const server = await this._postBackend('/api/grammar-feedback', { text, model: this.model });
+            if (server && typeof server === 'object') {
+                return {
+                    hasErrors: Boolean(server.hasErrors),
+                    correctedText: typeof server.correctedText === 'string' ? server.correctedText : text,
+                    edits: Array.isArray(server.edits) ? server.edits : [],
+                    feedback: typeof server.feedback === 'string' ? server.feedback : 'Looks good overall.',
+                    feedbackPoints: Array.isArray(server.feedbackPoints) ? server.feedbackPoints : [],
+                    sentenceFeedback: Array.isArray(server.sentenceFeedback) ? server.sentenceFeedback : [],
+                    naturalAlternative: typeof server.naturalAlternative === 'string' ? server.naturalAlternative : '',
+                    naturalReason: typeof server.naturalReason === 'string' ? server.naturalReason : '',
+                    naturalRewrite: typeof server.naturalRewrite === 'string' ? server.naturalRewrite : ''
+                };
+            }
+        } catch (serverError) {
+            console.warn('Grammar backend fallback to direct call:', serverError);
+        }
+
         if (!this.isConfigured) {
             return {
                 hasErrors: false,
@@ -268,6 +294,16 @@ Text:
     }
 
     async getNativeAlternatives(text) {
+        try {
+            const server = await this._postBackend('/api/native-alternatives', { text, model: this.model });
+            if (Array.isArray(server?.alternatives)) {
+                const normalized = this._normalizeNativeAlternatives(server.alternatives);
+                if (normalized.length > 0) return normalized;
+            }
+        } catch (serverError) {
+            console.warn('Native alternatives backend fallback to direct call:', serverError);
+        }
+
         if (!this.isConfigured) {
             return this._buildFallbackNativeAlternatives(text);
         }
@@ -480,6 +516,19 @@ Message:
     setSystemPrompt(prompt) {
         this.systemPrompt = prompt;
         localStorage.setItem('gemini_system_prompt', prompt);
+    }
+
+    async _postBackend(path, payload) {
+        const res = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload || {})
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data?.error || `HTTP ${res.status}`);
+        }
+        return res.json();
     }
 
     addToHistory(role, text) {
