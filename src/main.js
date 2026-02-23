@@ -581,8 +581,71 @@ function formatMessage(text) {
     .replace(/^\- (.*)/gm, '• $1');
 }
 
+function formatOriginalMessageWithHighlights(originalMessage, review) {
+  const source = String(originalMessage || '');
+  if (!source) return '';
+
+  const candidates = [];
+  const feedbackPoints = Array.isArray(review?.feedbackPoints) ? review.feedbackPoints : [];
+  const edits = Array.isArray(review?.edits) ? review.edits : [];
+
+  feedbackPoints.forEach((item) => {
+    const part = String(item?.part || '').trim();
+    if (part) candidates.push(part);
+  });
+  edits.forEach((edit) => {
+    const wrong = String(edit?.wrong || '').trim();
+    if (wrong) candidates.push(wrong);
+  });
+
+  const unique = [];
+  const seen = new Set();
+  for (const item of candidates) {
+    const key = item.toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+
+  if (unique.length === 0) {
+    return escapeHtml(source).replace(/\r\n|\r|\n/g, '<br>');
+  }
+
+  const ranges = [];
+  const lowered = source.toLowerCase();
+  unique
+    .sort((a, b) => b.length - a.length)
+    .forEach((part) => {
+      const idx = lowered.indexOf(part.toLowerCase());
+      if (idx < 0) return;
+      const end = idx + part.length;
+      const overlaps = ranges.some((r) => !(end <= r.start || idx >= r.end));
+      if (overlaps) return;
+      ranges.push({ start: idx, end });
+    });
+
+  if (ranges.length === 0) {
+    return escapeHtml(source).replace(/\r\n|\r|\n/g, '<br>');
+  }
+
+  ranges.sort((a, b) => a.start - b.start);
+  let cursor = 0;
+  let html = '';
+  for (const range of ranges) {
+    if (cursor < range.start) {
+      html += escapeHtml(source.slice(cursor, range.start));
+    }
+    html += `<span class="grammar-original-highlight">${escapeHtml(source.slice(range.start, range.end))}</span>`;
+    cursor = range.end;
+  }
+  if (cursor < source.length) {
+    html += escapeHtml(source.slice(cursor));
+  }
+  return html.replace(/\r\n|\r|\n/g, '<br>');
+}
+
 function formatGrammarReview(review, originalMessage = '') {
-  const original = escapeHtml(originalMessage || '');
+  const originalHtml = formatOriginalMessageWithHighlights(originalMessage, review);
   const corrected = escapeHtml(review.correctedText || '');
   const edits = Array.isArray(review.edits) ? review.edits : [];
   const feedback = escapeHtml(review.feedback || 'Looks good overall.');
@@ -631,9 +694,11 @@ function formatGrammarReview(review, originalMessage = '') {
   return `
     <div class="grammar-review">
       <div class="grammar-title">Native feedback</div>
-      ${original ? `
-        <div class="grammar-corrected-label">Your message</div>
-        <div class="grammar-corrected-text grammar-original-text">${original.replace(/\r\n|\r|\n/g, '<br>')}</div>
+      ${originalMessage ? `
+        <div class="grammar-original-box">
+          <div class="grammar-corrected-label">Your message</div>
+          <div class="grammar-corrected-text grammar-original-text">${originalHtml}</div>
+        </div>
       ` : ''}
       ${feedbackPointsHtml}
       ${editsHtml}

@@ -809,7 +809,8 @@ body.native-sheet-open {
 .grammar-point-item {
   padding: 8px 9px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(120, 130, 145, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .grammar-point-part {
@@ -915,6 +916,14 @@ body.native-sheet-open {
   margin-top: 2px;
 }
 
+.grammar-original-box {
+  margin-top: 2px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .grammar-corrected-text {
   font-size: 15px;
   line-height: 1.35;
@@ -923,6 +932,14 @@ body.native-sheet-open {
 
 .grammar-original-text {
   color: rgba(255, 255, 255, 0.97);
+}
+
+.grammar-original-highlight {
+  color: #ffd0d0;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 170, 170, 0.85);
+  text-decoration-thickness: 2px;
 }
 
 .grammar-save-btn {

@@ -183,14 +183,6 @@ Text:
             const correctedTextRaw = typeof parsed?.correctedText === 'string' && parsed.correctedText.trim()
                 ? parsed.correctedText.trim()
                 : text;
-            const correctedTextHeuristic = this._applyGrammarEditsToText(text, normalizedEdits);
-            const correctedText = (
-                hasErrors
-                && !this._correctedTextCoversEdits(text, correctedTextRaw, normalizedEdits)
-                && this._correctedTextCoversEdits(text, correctedTextHeuristic, normalizedEdits)
-            )
-                ? correctedTextHeuristic
-                : correctedTextRaw;
             const feedback = typeof parsed?.feedback === 'string' && parsed.feedback.trim()
                 ? parsed.feedback.trim()
                 : 'Looks good overall.';
@@ -211,6 +203,21 @@ Text:
                     issue: edit.reason || 'Needs correction.',
                     fix: edit.right
                 }));
+            const correctedTextHeuristic = this._applyGrammarEditsToText(text, normalizedEdits);
+            const correctedTextHeuristicWithFeedback = this._applyFeedbackPointFixes(correctedTextHeuristic, feedbackPoints);
+            const correctedTextRawWithFeedback = this._applyFeedbackPointFixes(correctedTextRaw, feedbackPoints);
+            const correctedCandidates = [
+                correctedTextRaw,
+                correctedTextRawWithFeedback,
+                correctedTextHeuristic,
+                correctedTextHeuristicWithFeedback
+            ].filter(Boolean);
+            const correctedText = this._pickBestCorrectedText(
+                text,
+                correctedCandidates,
+                normalizedEdits,
+                feedbackPoints
+            );
             const naturalAlternativeRaw = typeof parsed?.naturalAlternative === 'string'
                 ? parsed.naturalAlternative
                 : '';
@@ -748,6 +755,65 @@ ${raw}`;
         return true;
     }
 
+    _correctedTextCoversFeedbackPoints(sourceText, correctedText, feedbackPoints) {
+        const source = String(sourceText || '');
+        const corrected = String(correctedText || '');
+        if (!corrected.trim()) return false;
+        if (!Array.isArray(feedbackPoints) || feedbackPoints.length === 0) return true;
+
+        const sourceLower = source.toLowerCase();
+        const correctedLower = corrected.toLowerCase();
+
+        for (const point of feedbackPoints) {
+            const part = String(point?.part || '').trim();
+            const fix = String(point?.fix || '').trim();
+            if (!part || !fix) continue;
+            if (this._isMinorSentenceDifference(part, fix)) continue;
+
+            const partLower = part.toLowerCase();
+            const fixLower = fix.toLowerCase();
+
+            if (!sourceLower.includes(partLower)) continue;
+
+            const partStillPresent = correctedLower.includes(partLower);
+            const fixPresent = correctedLower.includes(fixLower);
+            if (partStillPresent || !fixPresent) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    _pickBestCorrectedText(sourceText, candidates, edits, feedbackPoints) {
+        const source = String(sourceText || '');
+        const unique = [];
+        const seen = new Set();
+        for (const candidate of candidates || []) {
+            const value = String(candidate || '').trim();
+            if (!value) continue;
+            const key = this._normalizeForComparison(value);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            unique.push(value);
+        }
+        if (unique.length === 0) return source;
+
+        let best = unique[0];
+        let bestScore = Number.POSITIVE_INFINITY;
+        for (const candidate of unique) {
+            let score = 0;
+            if (!this._correctedTextCoversEdits(source, candidate, edits)) score += 10;
+            if (!this._correctedTextCoversFeedbackPoints(source, candidate, feedbackPoints)) score += 10;
+            if (this._isMinorSentenceDifference(source, candidate)) score += 5;
+            if (score < bestScore) {
+                best = candidate;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
     _applyGrammarEditsToText(sourceText, edits) {
         let next = String(sourceText || '');
         if (!next || !Array.isArray(edits) || edits.length === 0) return next;
@@ -765,6 +831,30 @@ ${raw}`;
             const regex = new RegExp(escapedWrong, 'i');
             if (regex.test(next)) {
                 next = next.replace(regex, right);
+            }
+        }
+
+        return next;
+    }
+
+    _applyFeedbackPointFixes(sourceText, feedbackPoints) {
+        let next = String(sourceText || '');
+        if (!next || !Array.isArray(feedbackPoints) || feedbackPoints.length === 0) return next;
+
+        const sortedPoints = [...feedbackPoints]
+            .filter((item) => item && typeof item.part === 'string' && typeof item.fix === 'string')
+            .map((item) => ({
+                part: String(item.part || '').trim(),
+                fix: String(item.fix || '').trim()
+            }))
+            .filter((item) => item.part && item.fix && !this._isMinorSentenceDifference(item.part, item.fix))
+            .sort((a, b) => b.part.length - a.part.length);
+
+        for (const item of sortedPoints) {
+            const escapedPart = item.part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escapedPart, 'i');
+            if (regex.test(next)) {
+                next = next.replace(regex, item.fix);
             }
         }
 
