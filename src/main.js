@@ -32,6 +32,10 @@ let aiSpeechState = {
   loading: false,
   requestId: 0,
 };
+const aiTtsCache = {
+  blobs: new Map(),
+  inflight: new Map(),
+};
 let backSwipeState = {
   tracking: false,
   active: false,
@@ -101,6 +105,8 @@ let isEditingProfile = false;
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 const DEFAULT_TTS_VOICE_PRESET = 'Kore';
+const AI_TTS_STYLE_PROMPT = 'Speak in natural, warm, conversational American English with human-like intonation.';
+const TTS_CACHE_LIMIT = 8;
 
 // Speech Recognition Setup
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -395,6 +401,9 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
   bubbleRow.appendChild(bubble);
   if (role === 'ai') {
     attachAiSpeechButton(bubbleRow, bubble);
+    if (animate) {
+      preloadAiMessageTts(text);
+    }
   }
   msgDiv.appendChild(bubbleRow);
   msgDiv.appendChild(timeEl);
@@ -735,28 +744,19 @@ async function speakAiMessage(text, buttonEl) {
 
   stopAiSpeech();
   aiSpeechState.button = buttonEl;
-  aiSpeechState.loading = true;
   const requestId = ++aiSpeechState.requestId;
-  buttonEl.classList.add('loading');
   buttonEl.setAttribute('aria-pressed', 'true');
 
   try {
-    const response = await fetch('/api/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: speakText,
-        voiceName: getSelectedTtsVoicePreset(),
-        style: 'Speak in natural, warm, conversational American English with human-like intonation.',
-      }),
-    });
-
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => ({}));
-      throw new Error(errorPayload?.error || `HTTP ${response.status}`);
+    const voiceName = getSelectedTtsVoicePreset();
+    const cacheKey = buildTtsCacheKey(speakText, voiceName, AI_TTS_STYLE_PROMPT);
+    const hasCache = aiTtsCache.blobs.has(cacheKey);
+    if (!hasCache) {
+      aiSpeechState.loading = true;
+      buttonEl.classList.add('loading');
     }
 
-    const blob = await response.blob();
+    const blob = await fetchAiTtsBlob(speakText, { voiceName, style: AI_TTS_STYLE_PROMPT });
     if (requestId !== aiSpeechState.requestId) return;
 
     const objectUrl = URL.createObjectURL(blob);
@@ -792,6 +792,80 @@ function getSelectedTtsVoicePreset() {
   const fromSelect = voicePresetSelect?.value?.trim();
   if (fromSelect) return fromSelect;
   return localStorage.getItem('gemini_tts_voice_preset') || DEFAULT_TTS_VOICE_PRESET;
+}
+
+function buildTtsCacheKey(text, voiceName, style) {
+  return `${voiceName}::${style}::${String(text || '').trim()}`;
+}
+
+function setCachedTtsBlob(cacheKey, blob) {
+  if (!cacheKey || !blob) return;
+  if (aiTtsCache.blobs.has(cacheKey)) {
+    aiTtsCache.blobs.delete(cacheKey);
+  }
+  aiTtsCache.blobs.set(cacheKey, blob);
+  while (aiTtsCache.blobs.size > TTS_CACHE_LIMIT) {
+    const oldestKey = aiTtsCache.blobs.keys().next().value;
+    if (!oldestKey) break;
+    aiTtsCache.blobs.delete(oldestKey);
+  }
+}
+
+async function requestTtsBlobFromServer(text, { voiceName, style }) {
+  const response = await fetch('/api/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text,
+      voiceName,
+      style,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => ({}));
+    throw new Error(errorPayload?.error || `HTTP ${response.status}`);
+  }
+
+  return response.blob();
+}
+
+async function fetchAiTtsBlob(text, { voiceName, style }) {
+  const cacheKey = buildTtsCacheKey(text, voiceName, style);
+  const cached = aiTtsCache.blobs.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  if (aiTtsCache.inflight.has(cacheKey)) {
+    return aiTtsCache.inflight.get(cacheKey);
+  }
+
+  const promise = requestTtsBlobFromServer(text, { voiceName, style })
+    .then((blob) => {
+      setCachedTtsBlob(cacheKey, blob);
+      aiTtsCache.inflight.delete(cacheKey);
+      return blob;
+    })
+    .catch((error) => {
+      aiTtsCache.inflight.delete(cacheKey);
+      throw error;
+    });
+
+  aiTtsCache.inflight.set(cacheKey, promise);
+  return promise;
+}
+
+function preloadAiMessageTts(text) {
+  const speakText = String(text || '').trim();
+  if (!speakText) return;
+  const voiceName = getSelectedTtsVoicePreset();
+  void fetchAiTtsBlob(speakText, {
+    voiceName,
+    style: AI_TTS_STYLE_PROMPT,
+  }).catch(() => {
+    // Silent failure: preload should not interrupt chat UX.
+  });
 }
 
 function attachAiSpeechButton(bubbleRow, bubble) {
@@ -1634,6 +1708,8 @@ function setupEventListeners() {
   if (voicePresetSelect) {
     voicePresetSelect.addEventListener('change', () => {
       localStorage.setItem('gemini_tts_voice_preset', getSelectedTtsVoicePreset());
+      aiTtsCache.blobs.clear();
+      aiTtsCache.inflight.clear();
       showToast('음성 프리셋이 저장되었습니다 ✓');
     });
   }
