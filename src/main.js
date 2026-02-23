@@ -1892,6 +1892,7 @@ function attachDictionarySwipeHandlers() {
     let startY = 0;
     let currentX = 0;
     let dragging = false;
+    let actionLockUntil = 0;
     const MAX_SWIPE = 124;
 
     const closeRow = () => {
@@ -1899,9 +1900,15 @@ function attachDictionarySwipeHandlers() {
       entryCard.style.transform = '';
     };
 
-    categoryBtn.addEventListener('click', async (event) => {
+    const onCategoryAction = async (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if ('stopImmediatePropagation' in event && typeof event.stopImmediatePropagation === 'function') {
+        event.stopImmediatePropagation();
+      }
+      const now = Date.now();
+      if (now < actionLockUntil) return;
+      actionLockUntil = now + 300;
       const entries = getDictionaryEntries();
       const entry = entries.find((item) => item.id === entryId);
       if (!entry) return;
@@ -1913,18 +1920,40 @@ function attachDictionarySwipeHandlers() {
       setDictionaryEntryCategories(entryId, selectedCategoryIds);
       closeRow();
       showToast('카테고리를 업데이트했습니다.');
-    });
+    };
 
-    deleteBtn.addEventListener('click', (event) => {
+    const onDeleteAction = (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if ('stopImmediatePropagation' in event && typeof event.stopImmediatePropagation === 'function') {
+        event.stopImmediatePropagation();
+      }
+      const now = Date.now();
+      if (now < actionLockUntil) return;
+      actionLockUntil = now + 300;
       removeDictionaryEntry(entryId);
       renderDictionaryPage();
       updateDictionaryButtonBadge();
       showToast('사전에서 삭제했습니다.');
-    });
+    };
+
+    categoryBtn.addEventListener('touchstart', (event) => {
+      event.stopPropagation();
+    }, { passive: true });
+    deleteBtn.addEventListener('touchstart', (event) => {
+      event.stopPropagation();
+    }, { passive: true });
+
+    categoryBtn.addEventListener('click', onCategoryAction);
+    deleteBtn.addEventListener('click', onDeleteAction);
+    categoryBtn.addEventListener('touchend', onCategoryAction);
+    deleteBtn.addEventListener('touchend', onDeleteAction);
 
     row.addEventListener('touchstart', (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest('.dictionary-delete-btn, .dictionary-category-action-btn')) {
+        return;
+      }
       if (!event.touches || event.touches.length !== 1) return;
       startX = event.touches[0].clientX;
       startY = event.touches[0].clientY;

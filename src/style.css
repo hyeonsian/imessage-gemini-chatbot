@@ -1851,7 +1851,7 @@ body.native-sheet-open {
   color: #d94b51;
   font-size: 30px;
   font-weight: 300;
-  z-index: 3;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1868,7 +1868,7 @@ body.native-sheet-open {
   border: 1px solid rgba(76, 183, 255, 0.28);
   background: rgba(76, 183, 255, 0.15);
   color: #1b8bd8;
-  z-index: 3;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
