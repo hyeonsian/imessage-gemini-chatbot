@@ -380,6 +380,13 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
           saveMessages();
         }
 
+	        review = normalizeGrammarReviewForDisplay(review, bubble.dataset.original || '');
+	        bubble.dataset.review = JSON.stringify(review);
+	        if (msg) {
+	          msg.grammarReview = { ...review, checked: true };
+	          saveMessages();
+	        }
+
 	        bubble.innerHTML = formatGrammarReview(review, bubble.dataset.original || '');
         bubble.classList.add('is-reviewed');
         removeGrammarOkIndicator(bubble);
@@ -644,44 +651,154 @@ function formatOriginalMessageWithHighlights(originalMessage, review) {
   return html.replace(/\r\n|\r|\n/g, '<br>');
 }
 
-function formatGrammarReview(review, originalMessage = '') {
-  const originalHtml = formatOriginalMessageWithHighlights(originalMessage, review);
-  const corrected = escapeHtml(review.correctedText || '');
-  const edits = Array.isArray(review.edits) ? review.edits : [];
-  const feedback = escapeHtml(review.feedback || 'Looks good overall.');
-  const feedbackPoints = Array.isArray(review.feedbackPoints) ? review.feedbackPoints : [];
-  const sentenceFeedback = Array.isArray(review.sentenceFeedback) ? review.sentenceFeedback : [];
-  const naturalAlternative = escapeHtml(review.naturalAlternative || '');
-  const naturalReason = escapeHtml(review.naturalReason || '');
-  const naturalRewrite = escapeHtml(review.naturalRewrite || '');
+function normalizeReviewTextKey(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[.!?]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
 
-  const editsHtml = edits.slice(0, 4).map((edit) => {
-    const wrong = escapeHtml(edit.wrong || '');
-    const right = escapeHtml(edit.right || '');
-    const reason = escapeHtml(edit.reason || '');
-    return `
-      <div class="grammar-edit-row">
-        <span class="grammar-wrong">${wrong}</span>
-        <span class="grammar-arrow">→</span>
-        <span class="grammar-right"><strong>${right}</strong></span>
-      </div>
-      ${reason ? `<div class="grammar-reason">${reason}</div>` : ''}
-    `;
-  }).join('');
+function applySingleReplacement(text, from, to) {
+  const source = String(text || '');
+  const wrong = String(from || '').trim();
+  const right = String(to || '').trim();
+  if (!source || !wrong || !right || normalizeReviewTextKey(wrong) === normalizeReviewTextKey(right)) return source;
+  const regex = new RegExp(escapeRegExp(wrong), 'i');
+  return regex.test(source) ? source.replace(regex, right) : source;
+}
+
+function applyReviewFixesToText(text, review) {
+  let next = String(text || '');
+  if (!next) return next;
+
+  const edits = Array.isArray(review?.edits) ? review.edits : [];
+  const feedbackPoints = Array.isArray(review?.feedbackPoints) ? review.feedbackPoints : [];
+  const replacements = [];
+
+  edits.forEach((edit) => {
+    const wrong = String(edit?.wrong || '').trim();
+    const right = String(edit?.right || '').trim();
+    if (wrong && right) replacements.push({ from: wrong, to: right });
+  });
+
+  feedbackPoints.forEach((item) => {
+    const part = String(item?.part || '').trim();
+    const fix = String(item?.fix || '').trim();
+    if (part && fix) replacements.push({ from: part, to: fix });
+  });
+
+  replacements
+    .sort((a, b) => b.from.length - a.from.length)
+    .forEach((rep) => {
+      next = applySingleReplacement(next, rep.from, rep.to);
+    });
+
+  return next;
+}
+
+function reviewCorrectedTextCoverageScore(originalMessage, candidate, review) {
+  const source = String(originalMessage || '');
+  const target = String(candidate || '');
+  if (!target.trim()) return Number.POSITIVE_INFINITY;
+
+  let score = 0;
+  const checks = [];
+  const edits = Array.isArray(review?.edits) ? review.edits : [];
+  const feedbackPoints = Array.isArray(review?.feedbackPoints) ? review.feedbackPoints : [];
+
+  edits.forEach((edit) => checks.push({ from: edit?.wrong, to: edit?.right }));
+  feedbackPoints.forEach((item) => checks.push({ from: item?.part, to: item?.fix }));
+
+  const srcLower = source.toLowerCase();
+  const tgtLower = target.toLowerCase();
+
+  for (const check of checks) {
+    const from = String(check?.from || '').trim();
+    const to = String(check?.to || '').trim();
+    if (!from || !to) continue;
+    if (normalizeReviewTextKey(from) === normalizeReviewTextKey(to)) continue;
+
+    const fromLower = from.toLowerCase();
+    const toLower = to.toLowerCase();
+    if (!srcLower.includes(fromLower)) continue;
+
+    if (tgtLower.includes(fromLower)) score += 10;
+    if (!tgtLower.includes(toLower)) score += 10;
+  }
+
+  if (normalizeReviewTextKey(source) === normalizeReviewTextKey(target)) score += 5;
+  return score;
+}
+
+function normalizeGrammarReviewForDisplay(review, originalMessage = '') {
+  if (!review || typeof review !== 'object') return review;
+
+  const original = String(originalMessage || '');
+  const rawCorrected = String(review.correctedText || original);
+  const fromCorrected = applyReviewFixesToText(rawCorrected, review);
+  const fromOriginal = applyReviewFixesToText(original, review);
+  const candidates = [rawCorrected, fromCorrected, fromOriginal];
+
+  let best = rawCorrected;
+  let bestScore = reviewCorrectedTextCoverageScore(original, rawCorrected, review);
+  for (const candidate of candidates) {
+    const score = reviewCorrectedTextCoverageScore(original, candidate, review);
+    if (score < bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+
+  return {
+    ...review,
+    correctedText: best
+  };
+}
+
+function formatGrammarReview(review, originalMessage = '') {
+  const normalizedReview = normalizeGrammarReviewForDisplay(review, originalMessage);
+  const originalHtml = formatOriginalMessageWithHighlights(originalMessage, review);
+  const corrected = escapeHtml(normalizedReview.correctedText || '');
+  const edits = Array.isArray(normalizedReview.edits) ? normalizedReview.edits : [];
+  const feedback = escapeHtml(normalizedReview.feedback || 'Looks good overall.');
+  const feedbackPoints = Array.isArray(normalizedReview.feedbackPoints) ? normalizedReview.feedbackPoints : [];
+  const sentenceFeedback = Array.isArray(normalizedReview.sentenceFeedback) ? normalizedReview.sentenceFeedback : [];
+  const naturalAlternative = escapeHtml(normalizedReview.naturalAlternative || '');
+  const naturalReason = escapeHtml(normalizedReview.naturalReason || '');
+  const naturalRewrite = escapeHtml(normalizedReview.naturalRewrite || '');
 
   const feedbackPointsHtml = feedbackPoints.length > 0
     ? `
       <div class="grammar-feedback-text">${feedback}</div>
       <div class="grammar-points">
         ${feedbackPoints.map((item) => {
-          const part = escapeHtml(String(item?.part || ''));
-          const issue = escapeHtml(String(item?.issue || ''));
-          const fix = escapeHtml(String(item?.fix || ''));
+          const partRaw = String(item?.part || '').trim();
+          const issueRaw = String(item?.issue || '').trim();
+          const fixRaw = String(item?.fix || '').trim();
+          const matchedEdit = edits.find((edit) => {
+            const wrong = String(edit?.wrong || '').trim();
+            return normalizeReviewTextKey(wrong) && normalizeReviewTextKey(wrong) === normalizeReviewTextKey(partRaw);
+          });
+          const detailReasonRaw = String(matchedEdit?.reason || '').trim();
+          const part = escapeHtml(partRaw);
+          const issue = escapeHtml(issueRaw);
+          const fix = escapeHtml(fixRaw || String(matchedEdit?.right || ''));
+          const detailReason = escapeHtml(detailReasonRaw);
           return `
             <div class="grammar-point-item">
               <div class="grammar-point-part">${part}</div>
               ${issue ? `<div class="grammar-point-issue">${issue}</div>` : ''}
-              ${fix ? `<div class="grammar-point-fix">Try: ${fix}</div>` : ''}
+              ${fix ? `
+                <div class="grammar-point-edit-row">
+                  <span class="grammar-wrong">${part}</span>
+                  <span class="grammar-arrow">→</span>
+                  <span class="grammar-right"><strong>${fix}</strong></span>
+                </div>
+              ` : ''}
+              ${detailReason && normalizeReviewTextKey(detailReason) !== normalizeReviewTextKey(issueRaw)
+                ? `<div class="grammar-point-detail">${detailReason}</div>`
+                : ''}
             </div>
           `;
         }).join('')}
@@ -701,8 +818,7 @@ function formatGrammarReview(review, originalMessage = '') {
         </div>
       ` : ''}
       ${feedbackPointsHtml}
-      ${editsHtml}
-      ${review.hasErrors ? `
+      ${normalizedReview.hasErrors ? `
         <div class="grammar-corrected-label">Corrected sentence</div>
         <div class="grammar-corrected-text">${corrected.replace(/\r\n|\r|\n/g, '<br>')}</div>
         <button class="grammar-save-btn" type="button" aria-label="수정 문장을 내 사전에 추가">
