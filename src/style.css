@@ -654,6 +654,17 @@ body.native-sheet-open {
   color: #4cb7ff;
 }
 
+.bubble-tts-btn.loading {
+  background: rgba(255, 214, 10, 0.18);
+  color: #d8a900;
+  animation: ttsPulse 0.9s ease-in-out infinite;
+}
+
+@keyframes ttsPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 .bubble.search-match {
   box-shadow: 0 0 0 2px rgba(255, 214, 10, 0.45) inset;
 }

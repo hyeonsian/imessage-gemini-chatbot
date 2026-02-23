@@ -26,8 +26,11 @@ let nativeSheetRequestId = 0;
 let nativeSheetRefs = null;
 let openNativeSwipeRow = null;
 let aiSpeechState = {
-  utterance: null,
+  audio: null,
   button: null,
+  objectUrl: '',
+  loading: false,
+  requestId: 0,
 };
 let backSwipeState = {
   tracking: false,
@@ -693,85 +696,88 @@ function showToast(message) {
   }, 3000);
 }
 
-function getPreferredEnglishVoice() {
-  if (!('speechSynthesis' in window)) return null;
-  const voices = window.speechSynthesis.getVoices() || [];
-  if (!voices.length) return null;
-
-  const scoreVoice = (voice) => {
-    const name = String(voice.name || '').toLowerCase();
-    const lang = String(voice.lang || '').toLowerCase();
-    let score = 0;
-    if (lang.startsWith('en-us')) score += 6;
-    else if (lang.startsWith('en-')) score += 3;
-    if (/samantha|alex|siri|google us english|ava|allison|enhanced|premium|natural/.test(name)) score += 4;
-    if (voice.default) score += 2;
-    return score;
-  };
-
-  return [...voices]
-    .filter((voice) => String(voice.lang || '').toLowerCase().startsWith('en'))
-    .sort((a, b) => scoreVoice(b) - scoreVoice(a))[0] || null;
-}
-
 function stopAiSpeech() {
-  if (!('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
+  aiSpeechState.requestId += 1;
+  aiSpeechState.loading = false;
+  if (aiSpeechState.audio) {
+    aiSpeechState.audio.pause();
+    aiSpeechState.audio.src = '';
+    aiSpeechState.audio = null;
+  }
+  if (aiSpeechState.objectUrl) {
+    URL.revokeObjectURL(aiSpeechState.objectUrl);
+    aiSpeechState.objectUrl = '';
+  }
   if (aiSpeechState.button) {
     aiSpeechState.button.classList.remove('speaking');
+    aiSpeechState.button.classList.remove('loading');
     aiSpeechState.button.setAttribute('aria-pressed', 'false');
   }
-  aiSpeechState.utterance = null;
   aiSpeechState.button = null;
 }
 
-function speakAiMessage(text, buttonEl) {
-  if (!('speechSynthesis' in window) || typeof window.SpeechSynthesisUtterance === 'undefined') {
-    showToast('이 브라우저는 음성 재생을 지원하지 않습니다.');
-    return;
-  }
-
+async function speakAiMessage(text, buttonEl) {
   const speakText = String(text || '').trim();
   if (!speakText) return;
 
-  if (aiSpeechState.button === buttonEl && window.speechSynthesis.speaking) {
+  if (aiSpeechState.button === buttonEl && (aiSpeechState.loading || aiSpeechState.audio)) {
     stopAiSpeech();
     return;
   }
 
   stopAiSpeech();
-
-  const utterance = new SpeechSynthesisUtterance(speakText);
-  utterance.lang = 'en-US';
-  utterance.rate = 0.98;
-  utterance.pitch = 1;
-  utterance.volume = 1;
-  const preferredVoice = getPreferredEnglishVoice();
-  if (preferredVoice) utterance.voice = preferredVoice;
-
-  utterance.onend = () => {
-    if (aiSpeechState.button === buttonEl) {
-      buttonEl.classList.remove('speaking');
-      buttonEl.setAttribute('aria-pressed', 'false');
-      aiSpeechState.button = null;
-      aiSpeechState.utterance = null;
-    }
-  };
-  utterance.onerror = () => {
-    if (aiSpeechState.button === buttonEl) {
-      buttonEl.classList.remove('speaking');
-      buttonEl.setAttribute('aria-pressed', 'false');
-      aiSpeechState.button = null;
-      aiSpeechState.utterance = null;
-    }
-    showToast('음성 재생 중 오류가 발생했습니다.');
-  };
-
-  aiSpeechState.utterance = utterance;
   aiSpeechState.button = buttonEl;
-  buttonEl.classList.add('speaking');
+  aiSpeechState.loading = true;
+  const requestId = ++aiSpeechState.requestId;
+  buttonEl.classList.add('loading');
   buttonEl.setAttribute('aria-pressed', 'true');
-  window.speechSynthesis.speak(utterance);
+
+  try {
+    const response = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: speakText,
+        voiceName: 'Kore',
+        style: 'Speak in natural, warm, conversational American English with human-like intonation.',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({}));
+      throw new Error(errorPayload?.error || `HTTP ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    if (requestId !== aiSpeechState.requestId) return;
+
+    const objectUrl = URL.createObjectURL(blob);
+    const audio = new Audio(objectUrl);
+
+    audio.onended = () => {
+      if (aiSpeechState.audio === audio) {
+        stopAiSpeech();
+      }
+    };
+    audio.onerror = () => {
+      if (aiSpeechState.audio === audio) {
+        stopAiSpeech();
+      }
+      showToast('음성 재생 중 오류가 발생했습니다.');
+    };
+
+    aiSpeechState.loading = false;
+    aiSpeechState.objectUrl = objectUrl;
+    aiSpeechState.audio = audio;
+    buttonEl.classList.remove('loading');
+    buttonEl.classList.add('speaking');
+
+    await audio.play();
+  } catch (error) {
+    if (requestId !== aiSpeechState.requestId) return;
+    stopAiSpeech();
+    showToast(`음성 생성 실패: ${error.message}`);
+  }
 }
 
 function attachAiSpeechButton(bubbleRow, bubble) {
