@@ -55,6 +55,7 @@ let dictionaryFilterState = {
   native: true,
 };
 let dictionaryCategoryFilterId = 'all';
+let dictionarySortMode = 'newest';
 
 // ===========================
 // DOM Elements
@@ -1701,12 +1702,125 @@ function getDictionaryCategoryName(categoryId) {
   return category?.name || 'All';
 }
 
+function getDictionarySortOptions() {
+  return [
+    { id: 'newest', label: '최신순' },
+    { id: 'oldest', label: '오래된순' },
+    { id: 'az', label: 'A-Z' },
+    { id: 'za', label: 'Z-A' },
+  ];
+}
+
+function sortDictionaryEntries(entries) {
+  const arr = [...entries];
+  switch (dictionarySortMode) {
+    case 'oldest':
+      return arr.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    case 'az':
+      return arr.sort((a, b) => String(a.text || '').localeCompare(String(b.text || ''), 'en', { sensitivity: 'base' }));
+    case 'za':
+      return arr.sort((a, b) => String(b.text || '').localeCompare(String(a.text || ''), 'en', { sensitivity: 'base' }));
+    case 'newest':
+    default:
+      return arr.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  }
+}
+
+async function openDictionarySortPickerSheet() {
+  const options = getDictionarySortOptions();
+  if (!document.body) return null;
+
+  return new Promise((resolve) => {
+    let closed = false;
+    const overlay = document.createElement('div');
+    overlay.className = 'dictionary-sheet-overlay';
+    overlay.innerHTML = `
+      <div class="dictionary-sheet-backdrop"></div>
+      <div class="dictionary-sheet" role="dialog" aria-modal="true" aria-label="정렬 선택">
+        <div class="dictionary-sheet-handle"></div>
+        <div class="dictionary-sheet-title">정렬</div>
+        <div class="dictionary-sheet-subtitle">사전 카드 정렬 방식을 선택하세요</div>
+        <div class="dictionary-sheet-category-list">
+          ${options.map((opt) => `
+            <button class="dictionary-sheet-category-option ${dictionarySortMode === opt.id ? 'selected' : ''}" type="button" data-sort-id="${opt.id}">
+              <span>${escapeHtml(opt.label)}</span>
+              <span class="dictionary-sheet-check">✓</span>
+            </button>
+          `).join('')}
+        </div>
+        <div class="dictionary-sheet-actions">
+          <button class="dictionary-sheet-btn ghost" type="button" data-action="cancel">닫기</button>
+        </div>
+      </div>
+    `;
+
+    const close = (value) => {
+      if (closed) return;
+      closed = true;
+      overlay.classList.remove('active');
+      setTimeout(() => overlay.remove(), 180);
+      resolve(value);
+    };
+
+    overlay.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.classList.contains('dictionary-sheet-backdrop')) return close(null);
+
+      const optionBtn = target.closest('.dictionary-sheet-category-option');
+      if (optionBtn instanceof HTMLElement) {
+        const sortId = optionBtn.dataset.sortId;
+        if (!sortId) return;
+        return close(sortId);
+      }
+
+      const actionBtn = target.closest('.dictionary-sheet-btn');
+      if (actionBtn instanceof HTMLElement && actionBtn.dataset.action === 'cancel') {
+        return close(null);
+      }
+    });
+
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('active'));
+  });
+}
+
+function updateDictionaryHeaderRightAction() {
+  if (!dictionaryCategoriesBtn) return;
+  const isFilteredCategory = dictionaryCategoryFilterId !== 'all';
+  if (isFilteredCategory) {
+    dictionaryCategoriesBtn.setAttribute('aria-label', '정렬');
+    dictionaryCategoriesBtn.innerHTML = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M7 6H19" stroke="#007aff" stroke-width="2" stroke-linecap="round"/>
+        <path d="M10 12H19" stroke="#007aff" stroke-width="2" stroke-linecap="round"/>
+        <path d="M13 18H19" stroke="#007aff" stroke-width="2" stroke-linecap="round"/>
+        <path d="M5 6V18" stroke="#007aff" stroke-width="2" stroke-linecap="round"/>
+        <path d="M3.5 16.5L5 18L6.5 16.5" stroke="#007aff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `;
+    return;
+  }
+
+  dictionaryCategoriesBtn.setAttribute('aria-label', '카테고리');
+  dictionaryCategoriesBtn.innerHTML = `
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <path d="M5 7.5C5 6.67 5.67 6 6.5 6H17.5C18.33 6 19 6.67 19 7.5V10.5C19 11.33 18.33 12 17.5 12H6.5C5.67 12 5 11.33 5 10.5V7.5Z"
+        stroke="#007aff" stroke-width="1.8" />
+      <path d="M5 15.5C5 14.67 5.67 14 6.5 14H12.5C13.33 14 14 14.67 14 15.5V16.5C14 17.33 13.33 18 12.5 18H6.5C5.67 18 5 17.33 5 16.5V15.5Z"
+        stroke="#007aff" stroke-width="1.8" />
+      <path d="M16.5 14L19 16.5L16.5 19" stroke="#007aff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  `;
+}
+
 function updateDictionaryHeaderCategorySubtitle() {
   if (!dictionaryPageSubtitle) return;
   const isCustomCategory = dictionaryCategoryFilterId && dictionaryCategoryFilterId !== 'all';
   const label = isCustomCategory ? getDictionaryCategoryName(dictionaryCategoryFilterId) : '';
   dictionaryPageSubtitle.textContent = label;
   dictionaryPageSubtitle.hidden = !label;
+  updateDictionaryHeaderRightAction();
 }
 
 function renderDictionaryCategoryManagerPage() {
@@ -1824,9 +1938,9 @@ function updateDictionaryButtonBadge() {
 function renderDictionaryPage() {
   if (!dictionaryPageList) return;
   const entries = getDictionaryEntries();
-  const visibleEntries = entries.filter((entry) => (
+  const visibleEntries = sortDictionaryEntries(entries.filter((entry) => (
     isDictionaryTypeVisible(getDictionaryEntryType(entry)) && isDictionaryCategoryVisible(entry)
-  ));
+  )));
 
   if (entries.length === 0) {
     dictionaryPageList.innerHTML = `
@@ -2375,13 +2489,25 @@ function setupEventListeners() {
 
   if (dictionaryBackBtn) {
     dictionaryBackBtn.addEventListener('click', () => {
+      if (dictionaryCategoryFilterId !== 'all' && dictionaryView?.classList.contains('active')) {
+        dictionaryCategoryFilterId = 'all';
+        renderDictionaryPage();
+        return;
+      }
       closeDictionaryPage();
       openConversationList();
     });
   }
 
   if (dictionaryCategoriesBtn) {
-    dictionaryCategoriesBtn.addEventListener('click', () => {
+    dictionaryCategoriesBtn.addEventListener('click', async () => {
+      if (dictionaryCategoryFilterId !== 'all') {
+        const nextSort = await openDictionarySortPickerSheet();
+        if (!nextSort) return;
+        dictionarySortMode = nextSort;
+        renderDictionaryPage();
+        return;
+      }
       openDictionaryCategoryPage();
     });
   }
