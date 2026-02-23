@@ -717,6 +717,8 @@ function stopAiSpeech() {
   aiSpeechState.requestId += 1;
   aiSpeechState.loading = false;
   if (aiSpeechState.audio) {
+    aiSpeechState.audio.onended = null;
+    aiSpeechState.audio.onerror = null;
     aiSpeechState.audio.pause();
     aiSpeechState.audio.src = '';
     aiSpeechState.audio = null;
