@@ -1841,42 +1841,42 @@ body.native-sheet-open {
 
 .dictionary-delete-btn {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: 72px;
-  height: auto;
-  border: none;
-  background: #ff3b30;
-  color: #fff;
-  font-size: 34px;
+  top: 50%;
+  right: 8px;
+  width: 48px;
+  height: 48px;
+  transform: translateY(-50%);
+  border: 1px solid rgba(255, 90, 95, 0.25);
+  background: rgba(255, 105, 110, 0.16);
+  color: #d94b51;
+  font-size: 30px;
   font-weight: 300;
-  z-index: 1;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-top-right-radius: 14px;
-  border-bottom-right-radius: 14px;
+  border-radius: 12px;
 }
 
 .dictionary-category-action-btn {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 72px;
-  width: 76px;
-  height: auto;
-  border: none;
-  background: #007aff;
-  color: #fff;
-  z-index: 1;
+  top: 50%;
+  right: 64px;
+  width: 48px;
+  height: 48px;
+  transform: translateY(-50%);
+  border: 1px solid rgba(76, 183, 255, 0.28);
+  background: rgba(76, 183, 255, 0.15);
+  color: #1b8bd8;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 12px;
 }
 
 .dictionary-entry-swipe.revealed .dictionary-entry {
-  transform: translateX(-148px);
+  transform: translateX(-124px);
 }
 
 .dictionary-entry-meta-head {

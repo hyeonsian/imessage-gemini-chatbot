@@ -1844,9 +1844,7 @@ function renderDictionaryPage() {
       <button class="dictionary-delete-btn" type="button" aria-label="사전에서 삭제">−</button>
       <button class="dictionary-category-action-btn" type="button" aria-label="카테고리 편집">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <path d="M5 7.5C5 6.67 5.67 6 6.5 6H17.5C18.33 6 19 6.67 19 7.5V10.5C19 11.33 18.33 12 17.5 12H6.5C5.67 12 5 11.33 5 10.5V7.5Z" stroke="currentColor" stroke-width="1.8"/>
-          <path d="M5 15.5C5 14.67 5.67 14 6.5 14H12.5C13.33 14 14 14.67 14 15.5V16.5C14 17.33 13.33 18 12.5 18H6.5C5.67 18 5 17.33 5 16.5V15.5Z" stroke="currentColor" stroke-width="1.8"/>
-          <path d="M16.5 14L19 16.5L16.5 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
         </svg>
       </button>
       <div class="dictionary-entry">
@@ -1894,14 +1892,16 @@ function attachDictionarySwipeHandlers() {
     let startY = 0;
     let currentX = 0;
     let dragging = false;
-    const MAX_SWIPE = 148;
+    const MAX_SWIPE = 124;
 
     const closeRow = () => {
       row.classList.remove('revealed');
       entryCard.style.transform = '';
     };
 
-    categoryBtn.addEventListener('click', async () => {
+    categoryBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       const entries = getDictionaryEntries();
       const entry = entries.find((item) => item.id === entryId);
       if (!entry) return;
@@ -1915,7 +1915,9 @@ function attachDictionarySwipeHandlers() {
       showToast('카테고리를 업데이트했습니다.');
     });
 
-    deleteBtn.addEventListener('click', () => {
+    deleteBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       removeDictionaryEntry(entryId);
       renderDictionaryPage();
       updateDictionaryButtonBadge();
@@ -1950,7 +1952,7 @@ function attachDictionarySwipeHandlers() {
 
       const matrix = getComputedStyle(entryCard).transform;
       const tx = matrix !== 'none' ? Number(matrix.split(',')[4]) : 0;
-      const shouldReveal = tx <= -64;
+      const shouldReveal = tx <= -48;
 
       if (shouldReveal) {
         row.classList.add('revealed');
