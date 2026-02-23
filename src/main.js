@@ -363,6 +363,11 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
           }
         }
 
+        if (isLegacyOrWeakGrammarReview(review)) {
+          review = null;
+          delete bubble.dataset.review;
+        }
+
         if (!review) {
           review = await gemini.checkGrammar(bubble.dataset.original);
           if (msg) {
@@ -645,6 +650,27 @@ function formatGrammarReview(review) {
       ` : ''}
     </div>
   `;
+}
+
+function isLegacyOrWeakGrammarReview(review) {
+  if (!review || typeof review !== 'object') return true;
+
+  const hasFeedbackPoints = Array.isArray(review.feedbackPoints) && review.feedbackPoints.length > 0;
+  const hasNaturalRewrite = typeof review.naturalRewrite === 'string' && review.naturalRewrite.trim().length > 0;
+  const hasEdits = Array.isArray(review.edits) && review.edits.length > 0;
+  const hasSentenceFeedback = Array.isArray(review.sentenceFeedback) && review.sentenceFeedback.length > 0;
+
+  if (!('feedbackPoints' in review) && !('naturalRewrite' in review)) return true;
+
+  const feedbackText = String(review.feedback || '').trim().toLowerCase();
+  const isPlaceholderOnly =
+    (feedbackText === 'looks good overall.' || feedbackText === 'looks good overall') &&
+    !hasFeedbackPoints &&
+    !hasNaturalRewrite &&
+    !hasEdits &&
+    !hasSentenceFeedback;
+
+  return isPlaceholderOnly;
 }
 
 function attachGrammarSaveButton(bubbleEl, review, originalText, sourceSentAt = null) {
