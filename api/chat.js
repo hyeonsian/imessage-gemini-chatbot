@@ -17,20 +17,28 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { message = '', model } = req.body || {};
+  const { message = '', model, history } = req.body || {};
   const input = String(message || '').trim();
   if (!input) return res.status(400).json({ error: 'message is required' });
 
   const apiKey = getServerApiKey();
   if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
   const resolvedModel = getModelFromRequest({ model });
+  const normalizedHistory = normalizeChatHistory(history);
+  const contents = [
+    ...normalizedHistory.map((item) => ({
+      role: item.role === 'ai' ? 'model' : 'user',
+      parts: [{ text: item.text }],
+    })),
+    { role: 'user', parts: [{ text: input }] },
+  ];
 
   try {
     const data = await callGeminiGenerateContent({
       apiKey,
       model: resolvedModel,
       body: {
-        contents: [{ role: 'user', parts: [{ text: input }] }],
+        contents,
         systemInstruction: {
           parts: [{ text: DEFAULT_SYSTEM_PROMPT }],
         },
@@ -59,4 +67,18 @@ export default async function handler(req, res) {
     console.error('chat api error:', error);
     return res.status(error.status || 500).json({ error: error.message || 'Chat failed' });
   }
+}
+
+function normalizeChatHistory(history) {
+  if (!Array.isArray(history)) return [];
+
+  const normalized = history
+    .map((item) => ({
+      role: item?.role === 'ai' ? 'ai' : (item?.role === 'user' ? 'user' : ''),
+      text: String(item?.text || '').trim(),
+    }))
+    .filter((item) => (item.role === 'user' || item.role === 'ai') && item.text.length > 0);
+
+  // Keep recent context only to control token usage/latency.
+  return normalized.slice(-16);
 }
