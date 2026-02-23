@@ -68,9 +68,11 @@ export class GeminiAPI {
                 correctedText: text,
                 edits: [],
                 feedback: 'Sounds natural for daily conversation.',
-                sentenceFeedback: this._normalizeSentenceFeedback([], text, 'Sounds natural for daily conversation.', '', ''),
+                feedbackPoints: [],
+                sentenceFeedback: [],
                 naturalAlternative: '',
-                naturalReason: ''
+                naturalReason: '',
+                naturalRewrite: ''
             };
         }
 
@@ -87,14 +89,14 @@ Analyze the user's sentence and return ONLY valid JSON (no markdown, no extra te
     }
   ],
   "feedback": "string",
-  "sentenceFeedback": [
+  "feedbackPoints": [
     {
-      "sentence": "string",
-      "feedback": "string",
-      "suggested": "string",
-      "why": "short string"
+      "part": "string",
+      "issue": "string",
+      "fix": "string"
     }
   ],
+  "naturalRewrite": "string",
   "naturalAlternative": "string",
   "naturalReason": "short string"
 }
@@ -102,11 +104,13 @@ Rules:
 - correctedText must be the full corrected sentence.
 - If there is no grammar issue, set hasErrors=false and edits=[].
 - Keep the original meaning and tone.
-- Give short native-speaker feedback in "feedback" (max 14 words).
-- Provide sentence-by-sentence feedback in "sentenceFeedback" (one item per sentence).
-- Each sentence feedback should be practical and specific (8-24 words).
-- If a sentence already sounds natural, keep "suggested" as "" for that sentence.
-- If improved phrasing is needed, set "suggested" to a short everyday rewrite.
+- Give overall native-speaker feedback in "feedback" (1-2 short sentences, practical).
+- In "feedbackPoints", point out specific parts across the whole text (typos, grammar, word choice, awkward phrasing).
+- Each feedbackPoints item should reference the actual problematic part in "part".
+- Include spelling/typo fixes explicitly (example: "leven" -> "level") when present.
+- Keep "fix" short and concrete.
+- "naturalRewrite" must be a full rewrite of the whole user text in natural everyday English.
+- If the text is already natural enough, set naturalRewrite="".
 - If the sentence is already natural enough, set naturalAlternative="" and naturalReason="".
 - If a more natural everyday phrasing exists, set naturalAlternative to ONE short, common expression.
 - naturalAlternative must be easy everyday English (CEFR A2-B1), avoid idioms/jargon.
@@ -158,6 +162,23 @@ Sentence:
             const feedback = typeof parsed?.feedback === 'string' && parsed.feedback.trim()
                 ? parsed.feedback.trim()
                 : 'Looks good overall.';
+            const feedbackPointsFromModel = Array.isArray(parsed?.feedbackPoints)
+                ? parsed.feedbackPoints
+                    .map((item) => ({
+                        part: typeof item?.part === 'string' ? item.part.trim() : '',
+                        issue: typeof item?.issue === 'string' ? item.issue.trim() : '',
+                        fix: typeof item?.fix === 'string' ? item.fix.trim() : ''
+                    }))
+                    .filter((item) => item.part && (item.issue || item.fix))
+                    .slice(0, 6)
+                : [];
+            const feedbackPoints = feedbackPointsFromModel.length > 0
+                ? feedbackPointsFromModel
+                : normalizedEdits.slice(0, 6).map((edit) => ({
+                    part: edit.wrong,
+                    issue: edit.reason || 'Needs correction.',
+                    fix: edit.right
+                }));
             const naturalAlternativeRaw = typeof parsed?.naturalAlternative === 'string'
                 ? parsed.naturalAlternative
                 : '';
@@ -165,27 +186,31 @@ Sentence:
             const naturalReason = typeof parsed?.naturalReason === 'string' && parsed.naturalReason.trim()
                 ? parsed.naturalReason.trim()
                 : '';
+            const naturalRewriteRaw = typeof parsed?.naturalRewrite === 'string'
+                ? parsed.naturalRewrite
+                : '';
+            const naturalRewrite = this._cleanAlternativeText(naturalRewriteRaw);
             const hasUsableNaturalAlternative = naturalAlternative
                 && !this._isMinorSentenceDifference(text, naturalAlternative);
-            const sentenceFeedback = this._normalizeSentenceFeedback(
-                parsed?.sentenceFeedback,
-                text,
-                feedback,
-                naturalAlternative,
-                naturalReason
+            const naturalRewriteFallback = naturalRewrite || (
+                normalizedEdits.length > 0 && !this._isMinorSentenceDifference(text, correctedText)
+                    ? correctedText
+                    : ''
             );
-            const enhancedSentenceFeedback = this._hasWeakSentenceFeedback(sentenceFeedback)
-                ? await this._requestDetailedSentenceFeedback(text, normalizedEdits, correctedText)
-                : sentenceFeedback;
+            const hasUsableNaturalRewrite = naturalRewriteFallback
+                && !this._isMinorSentenceDifference(text, naturalRewriteFallback)
+                && !this._isMinorSentenceDifference(correctedText, naturalRewriteFallback);
 
             return {
                 hasErrors,
                 correctedText: hasErrors ? correctedText : text,
                 edits: normalizedEdits,
                 feedback,
-                sentenceFeedback: enhancedSentenceFeedback,
+                feedbackPoints,
+                sentenceFeedback: [],
                 naturalAlternative: hasUsableNaturalAlternative ? naturalAlternative : '',
-                naturalReason: hasUsableNaturalAlternative ? naturalReason : ''
+                naturalReason: hasUsableNaturalAlternative ? naturalReason : '',
+                naturalRewrite: hasUsableNaturalRewrite ? naturalRewriteFallback : ''
             };
         } catch (error) {
             console.error('Grammar check error:', error);
@@ -194,9 +219,11 @@ Sentence:
                 correctedText: text,
                 edits: [],
                 feedback: 'Looks good overall.',
-                sentenceFeedback: this._normalizeSentenceFeedback([], text, 'Looks good overall.', '', ''),
+                feedbackPoints: [],
+                sentenceFeedback: [],
                 naturalAlternative: '',
-                naturalReason: ''
+                naturalReason: '',
+                naturalRewrite: ''
             };
         }
     }

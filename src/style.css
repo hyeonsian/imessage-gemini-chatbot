@@ -800,6 +800,39 @@ body.native-sheet-open {
   color: rgba(255, 255, 255, 0.94);
 }
 
+.grammar-points {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.grammar-point-item {
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.grammar-point-part {
+  font-size: 12px;
+  color: #f4f8ff;
+  font-weight: 700;
+}
+
+.grammar-point-issue {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.grammar-point-fix {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #d3ffe1;
+  font-weight: 600;
+}
+
 .grammar-sentence-item {
   margin-top: 4px;
   padding: 8px 9px;
