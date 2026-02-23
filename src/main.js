@@ -273,7 +273,6 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
   if (role === 'ai') {
     bubble.dataset.original = text;
     bubble.dataset.translated = translation || '';
-    attachAiSpeechButton(bubbleRow, bubble);
 
     bubble.addEventListener('click', async () => {
       // Toggle transition with blur
@@ -383,6 +382,9 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
   timeEl.textContent = time || formatTime(new Date());
 
   bubbleRow.appendChild(bubble);
+  if (role === 'ai') {
+    attachAiSpeechButton(bubbleRow, bubble);
+  }
   msgDiv.appendChild(bubbleRow);
   msgDiv.appendChild(timeEl);
   chatMessages.appendChild(msgDiv);
