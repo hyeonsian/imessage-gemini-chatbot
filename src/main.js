@@ -1464,13 +1464,16 @@ function isDictionaryCategoryVisible(entry) {
   return ids.includes(dictionaryCategoryFilterId);
 }
 
-async function openDictionaryCategoryPickerSheet({ title = '카테고리에 추가하시겠습니까?' } = {}) {
+async function openDictionaryCategoryPickerSheet({
+  title = '카테고리에 추가하시겠습니까?',
+  initialSelectedCategoryIds = [],
+} = {}) {
   const categories = getDictionaryCategories();
 
   if (!document.body) return [];
 
   return new Promise((resolve) => {
-    let selected = new Set();
+    let selected = new Set(Array.isArray(initialSelectedCategoryIds) ? initialSelectedCategoryIds.filter(Boolean) : []);
     let closed = false;
 
     const overlay = document.createElement('div');
@@ -1483,7 +1486,7 @@ async function openDictionaryCategoryPickerSheet({ title = '카테고리에 추�
         <div class="dictionary-sheet-subtitle">저장할 카테고리를 선택하세요 (선택 안 함 가능)</div>
         <div class="dictionary-sheet-category-list">
           ${categories.length === 0 ? '<div class="dictionary-sheet-empty">아직 카테고리가 없습니다.</div>' : categories.map((cat) => `
-            <button class="dictionary-sheet-category-option" type="button" data-category-id="${escapeHtml(cat.id)}">
+            <button class="dictionary-sheet-category-option ${selected.has(cat.id) ? 'selected' : ''}" type="button" data-category-id="${escapeHtml(cat.id)}">
               <span>${escapeHtml(cat.name)}</span>
               <span class="dictionary-sheet-check">✓</span>
             </button>
@@ -1620,6 +1623,24 @@ function addGrammarDictionaryEntry(originalText, review, sourceSentAt = null, ca
   return true;
 }
 
+function setDictionaryEntryCategories(entryId, categoryIds = []) {
+  let changed = false;
+  const normalized = [...new Set((Array.isArray(categoryIds) ? categoryIds : []).filter(Boolean))];
+  const entries = getDictionaryEntries().map((entry) => {
+    if (entry.id !== entryId) return entry;
+    changed = true;
+    return {
+      ...entry,
+      categoryIds: normalized,
+    };
+  });
+  if (!changed) return false;
+  saveDictionaryEntries(entries);
+  if (dictionaryView?.classList.contains('active')) renderDictionaryPage();
+  if (dictionaryCategoryView?.classList.contains('active')) renderDictionaryCategoryManagerPage();
+  return true;
+}
+
 function getDictionaryEntryType(entry) {
   return entry?.entryType === 'grammar' ? 'grammar' : 'native';
 }
@@ -1634,6 +1655,27 @@ function getDictionaryEntryTypeClass(entry) {
   return getDictionaryEntryType(entry) === 'grammar'
     ? 'type-grammar'
     : 'type-native';
+}
+
+function getDictionaryEntryCategoryNames(entry) {
+  const ids = Array.isArray(entry?.categoryIds) ? entry.categoryIds : [];
+  if (ids.length === 0) return [];
+  const categories = getDictionaryCategories();
+  const byId = new Map(categories.map((cat) => [cat.id, cat.name]));
+  return ids.map((id) => byId.get(id)).filter(Boolean);
+}
+
+function renderDictionaryCategoryBadges(entry) {
+  const categoryNames = getDictionaryEntryCategoryNames(entry);
+  if (categoryNames.length === 0) return '';
+  const visible = categoryNames.slice(0, 2);
+  const extraCount = Math.max(0, categoryNames.length - visible.length);
+  return `
+    <div class="dictionary-entry-categories">
+      ${visible.map((name) => `<span class="dictionary-entry-category-badge">${escapeHtml(name)}</span>`).join('')}
+      ${extraCount > 0 ? `<span class="dictionary-entry-category-badge extra">+${extraCount}</span>` : ''}
+    </div>
+  `;
 }
 
 function isDictionaryTypeVisible(type) {
@@ -1800,11 +1842,19 @@ function renderDictionaryPage() {
     : visibleEntries.map((entry) => `
     <div class="dictionary-entry-swipe" data-entry-id="${escapeHtml(entry.id || '')}">
       <button class="dictionary-delete-btn" type="button" aria-label="사전에서 삭제">−</button>
+      <button class="dictionary-category-action-btn" type="button" aria-label="카테고리 편집">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M5 7.5C5 6.67 5.67 6 6.5 6H17.5C18.33 6 19 6.67 19 7.5V10.5C19 11.33 18.33 12 17.5 12H6.5C5.67 12 5 11.33 5 10.5V7.5Z" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M5 15.5C5 14.67 5.67 14 6.5 14H12.5C13.33 14 14 14.67 14 15.5V16.5C14 17.33 13.33 18 12.5 18H6.5C5.67 18 5 17.33 5 16.5V15.5Z" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M16.5 14L19 16.5L16.5 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
       <div class="dictionary-entry">
         <div class="dictionary-entry-meta-head">
           <span class="dictionary-entry-type ${getDictionaryEntryTypeClass(entry)}">${escapeHtml(getDictionaryEntryTag(entry))}</span>
           <span class="dictionary-entry-time">${escapeHtml(formatDictionaryTimestamp(entry.originalSentAt || entry.createdAt))}</span>
         </div>
+        ${renderDictionaryCategoryBadges(entry)}
         <div class="dictionary-entry-original-label">원래 메시지</div>
         <div class="dictionary-entry-original">${escapeHtml(entry.original || '-')}</div>
         ${renderDictionaryGrammarEdits(entry)}
@@ -1836,19 +1886,34 @@ function attachDictionarySwipeHandlers() {
   rows.forEach((row) => {
     const entryCard = row.querySelector('.dictionary-entry');
     const deleteBtn = row.querySelector('.dictionary-delete-btn');
+    const categoryBtn = row.querySelector('.dictionary-category-action-btn');
     const entryId = row.dataset.entryId;
-    if (!entryCard || !deleteBtn || !entryId) return;
+    if (!entryCard || !deleteBtn || !categoryBtn || !entryId) return;
 
     let startX = 0;
     let startY = 0;
     let currentX = 0;
     let dragging = false;
-    const MAX_SWIPE = 72;
+    const MAX_SWIPE = 148;
 
     const closeRow = () => {
       row.classList.remove('revealed');
       entryCard.style.transform = '';
     };
+
+    categoryBtn.addEventListener('click', async () => {
+      const entries = getDictionaryEntries();
+      const entry = entries.find((item) => item.id === entryId);
+      if (!entry) return;
+      const selectedCategoryIds = await openDictionaryCategoryPickerSheet({
+        title: '이 항목의 카테고리를 편집할까요?',
+        initialSelectedCategoryIds: entry.categoryIds || [],
+      });
+      if (selectedCategoryIds === null) return;
+      setDictionaryEntryCategories(entryId, selectedCategoryIds);
+      closeRow();
+      showToast('카테고리를 업데이트했습니다.');
+    });
 
     deleteBtn.addEventListener('click', () => {
       removeDictionaryEntry(entryId);
@@ -1885,7 +1950,7 @@ function attachDictionarySwipeHandlers() {
 
       const matrix = getComputedStyle(entryCard).transform;
       const tx = matrix !== 'none' ? Number(matrix.split(',')[4]) : 0;
-      const shouldReveal = tx <= -36;
+      const shouldReveal = tx <= -64;
 
       if (shouldReveal) {
         row.classList.add('revealed');

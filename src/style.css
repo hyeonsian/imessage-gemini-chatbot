@@ -1859,8 +1859,24 @@ body.native-sheet-open {
   border-bottom-right-radius: 14px;
 }
 
+.dictionary-category-action-btn {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 72px;
+  width: 76px;
+  height: auto;
+  border: none;
+  background: #007aff;
+  color: #fff;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .dictionary-entry-swipe.revealed .dictionary-entry {
-  transform: translateX(-72px);
+  transform: translateX(-148px);
 }
 
 .dictionary-entry-meta-head {
@@ -1897,6 +1913,35 @@ body.native-sheet-open {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.4px;
+}
+
+.dictionary-entry-categories {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dictionary-entry-category-badge {
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.08);
+  border: 1px solid rgba(0, 122, 255, 0.16);
+  border-radius: 999px;
+  padding: 4px 7px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dictionary-entry-category-badge.extra {
+  color: var(--text-secondary);
+  background: rgba(120, 120, 128, 0.08);
+  border-color: rgba(120, 120, 128, 0.12);
 }
 
 .dictionary-entry-time {
