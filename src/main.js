@@ -700,7 +700,7 @@ function setupUserBubbleNativeSwipeAction(messageEl, bubble, context = {}) {
 
   messageEl.insertBefore(actionBtn, messageEl.querySelector('.message-time'));
 
-  const MAX_SWIPE = 64;
+  const MAX_SWIPE = 54;
   let startX = 0;
   let startY = 0;
   let baseX = 0;
