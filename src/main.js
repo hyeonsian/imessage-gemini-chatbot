@@ -24,6 +24,7 @@ let isProcessing = false;
 let hasMessageIdChanges = false;
 let nativeSheetRequestId = 0;
 let nativeSheetRefs = null;
+let openNativeSwipeRow = null;
 let backSwipeState = {
   tracking: false,
   active: false,
@@ -298,9 +299,11 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
   // Add click listener for user messages to check grammar
   if (role === 'user') {
     bubble.dataset.original = text;
-    setupUserBubbleLongPress(bubble);
 
     const messageData = messageIndex !== null ? messages[messageIndex] : null;
+    setupUserBubbleNativeSwipeAction(msgDiv, bubble, {
+      sourceSentAt: messageData?.sentAt || messageData?.createdAt || null,
+    });
     if (messageData?.grammarReview) {
       bubble.dataset.review = JSON.stringify(messageData.grammarReview);
     }
@@ -679,46 +682,111 @@ function showToast(message) {
   }, 3000);
 }
 
-function setupUserBubbleLongPress(bubble) {
-  const LONG_PRESS_MS = 550;
-  let timer = null;
-  let suppressNextClick = false;
+function setupUserBubbleNativeSwipeAction(messageEl, bubble, context = {}) {
+  if (!messageEl || !bubble) return;
 
-  const clearPressTimer = () => {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
+  messageEl.classList.add('has-native-swipe-action');
+
+  const actionBtn = document.createElement('button');
+  actionBtn.className = 'bubble-native-action-btn';
+  actionBtn.type = 'button';
+  actionBtn.setAttribute('aria-label', 'Open native alternatives');
+  actionBtn.innerHTML = `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+
+  messageEl.insertBefore(actionBtn, messageEl.querySelector('.message-time'));
+
+  const MAX_SWIPE = 64;
+  let startX = 0;
+  let startY = 0;
+  let baseX = 0;
+  let dragging = false;
+  let moved = false;
+
+  const closeRow = () => {
+    messageEl.classList.remove('native-action-revealed');
+    bubble.style.transform = '';
+    if (openNativeSwipeRow === messageEl) openNativeSwipeRow = null;
+  };
+
+  const revealRow = () => {
+    if (openNativeSwipeRow && openNativeSwipeRow !== messageEl) {
+      const prevBubble = openNativeSwipeRow.querySelector('.bubble');
+      openNativeSwipeRow.classList.remove('native-action-revealed');
+      if (prevBubble) prevBubble.style.transform = '';
+    }
+    openNativeSwipeRow = messageEl;
+    messageEl.classList.add('native-action-revealed');
+    bubble.style.transform = `translateX(-${MAX_SWIPE}px)`;
+  };
+
+  actionBtn.addEventListener('click', async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    await openNativeAlternativesSheet(bubble.dataset.original || bubble.textContent || '', context);
+    closeRow();
+  });
+
+  bubble.addEventListener('click', (event) => {
+    if (messageEl.classList.contains('native-action-revealed')) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeRow();
+    }
+  }, true);
+
+  messageEl.addEventListener('touchstart', (event) => {
+    if (!event.touches || event.touches.length !== 1) return;
+    if (event.target instanceof Element && event.target.closest('.bubble-native-action-btn')) return;
+    startX = event.touches[0].clientX;
+    startY = event.touches[0].clientY;
+    baseX = messageEl.classList.contains('native-action-revealed') ? -MAX_SWIPE : 0;
+    dragging = true;
+    moved = false;
+    bubble.style.transition = 'none';
+  }, { passive: true });
+
+  messageEl.addEventListener('touchmove', (event) => {
+    if (!dragging || !event.touches || event.touches.length !== 1) return;
+    const dx = event.touches[0].clientX - startX;
+    const dy = Math.abs(event.touches[0].clientY - startY);
+    if (dy > Math.abs(dx) && dy > 8) return;
+
+    const nextX = Math.max(-MAX_SWIPE, Math.min(0, baseX + dx));
+    if (Math.abs(nextX - baseX) > 4) moved = true;
+    event.preventDefault();
+    bubble.style.transform = `translateX(${nextX}px)`;
+  }, { passive: false });
+
+  const finishSwipe = () => {
+    if (!dragging) return;
+    dragging = false;
+    bubble.style.transition = '';
+
+    const matrix = getComputedStyle(bubble).transform;
+    const tx = matrix !== 'none' ? Number(matrix.split(',')[4]) : 0;
+    if (tx <= -30) {
+      revealRow();
+    } else {
+      closeRow();
+    }
+
+    if (moved) {
+      const suppressClickOnce = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        bubble.removeEventListener('click', suppressClickOnce, true);
+      };
+      bubble.addEventListener('click', suppressClickOnce, true);
     }
   };
 
-  bubble.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-  });
-
-  bubble.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0) return;
-    clearPressTimer();
-    timer = setTimeout(async () => {
-      suppressNextClick = true;
-      const index = Number(bubble.dataset.messageIndex);
-      const msg = Number.isNaN(index) ? null : messages[index];
-      await openNativeAlternativesSheet(bubble.dataset.original, {
-        sourceSentAt: msg?.sentAt || msg?.createdAt || null,
-      });
-    }, LONG_PRESS_MS);
-  });
-
-  bubble.addEventListener('pointerup', clearPressTimer);
-  bubble.addEventListener('pointerleave', clearPressTimer);
-  bubble.addEventListener('pointercancel', clearPressTimer);
-
-  bubble.addEventListener('click', (event) => {
-    if (suppressNextClick) {
-      suppressNextClick = false;
-      event.stopImmediatePropagation();
-      event.preventDefault();
-    }
-  }, true);
+  messageEl.addEventListener('touchend', finishSwipe, { passive: true });
+  messageEl.addEventListener('touchcancel', finishSwipe, { passive: true });
 }
 
 function ensureNativeAlternativesSheet() {

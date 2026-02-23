@@ -568,6 +568,10 @@ body.native-sheet-open {
   align-items: flex-start;
 }
 
+.message.sent.has-native-swipe-action {
+  padding-right: 6px;
+}
+
 .bubble {
   max-width: 75%;
   padding: 10px 16px;
@@ -579,6 +583,35 @@ body.native-sheet-open {
   transition: filter 0.4s ease, opacity 0.3s ease, transform 0.3s ease;
   cursor: pointer;
   /* Interactive for translation */
+}
+
+.bubble-native-action-btn {
+  position: absolute;
+  right: 0;
+  top: 2px;
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 14px;
+  background: rgba(76, 183, 255, 0.18);
+  color: #4cb7ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.92);
+  transition: opacity 0.16s ease, transform 0.16s ease, background 0.16s ease;
+}
+
+.message.sent.native-action-revealed .bubble-native-action-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+.bubble-native-action-btn:active {
+  background: rgba(76, 183, 255, 0.28);
 }
 
 .bubble.search-match {
