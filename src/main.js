@@ -90,6 +90,8 @@ const profileClose = document.getElementById('profileClose');
 const profileEditBtn = document.getElementById('profileEditBtn');
 const aiNameInput = document.getElementById('aiNameInput');
 const profileSystemPrompt = document.getElementById('profileSystemPrompt');
+const voicePresetSelect = document.getElementById('voicePresetSelect');
+const testVoicePresetBtn = document.getElementById('testVoicePresetBtn');
 const changeAvatarBtn = document.getElementById('changeAvatarBtn');
 const avatarInput = document.getElementById('avatarInput');
 const headerAvatar = document.getElementById('headerAvatar');
@@ -98,6 +100,7 @@ const profileAvatarLarge = document.getElementById('profileAvatarLarge');
 let isEditingProfile = false;
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+const DEFAULT_TTS_VOICE_PRESET = 'Kore';
 
 // Speech Recognition Setup
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -209,6 +212,7 @@ function updateStatus() {
 function updateAIProfileUI() {
   const aiName = localStorage.getItem('ai_name') || 'AI Assistant';
   const aiAvatar = localStorage.getItem('ai_avatar') || '✦';
+  const ttsVoicePreset = localStorage.getItem('gemini_tts_voice_preset') || DEFAULT_TTS_VOICE_PRESET;
 
   contactName.textContent = aiName;
   aiNameInput.value = aiName;
@@ -232,6 +236,10 @@ function updateAIProfileUI() {
   }
 
   profileSystemPrompt.value = gemini.systemPrompt;
+  if (voicePresetSelect) {
+    const hasOption = Array.from(voicePresetSelect.options).some((opt) => opt.value === ttsVoicePreset);
+    voicePresetSelect.value = hasOption ? ttsVoicePreset : DEFAULT_TTS_VOICE_PRESET;
+  }
 }
 
 function getModelName(model) {
@@ -738,7 +746,7 @@ async function speakAiMessage(text, buttonEl) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text: speakText,
-        voiceName: 'Kore',
+        voiceName: getSelectedTtsVoicePreset(),
         style: 'Speak in natural, warm, conversational American English with human-like intonation.',
       }),
     });
@@ -778,6 +786,12 @@ async function speakAiMessage(text, buttonEl) {
     stopAiSpeech();
     showToast(`음성 생성 실패: ${error.message}`);
   }
+}
+
+function getSelectedTtsVoicePreset() {
+  const fromSelect = voicePresetSelect?.value?.trim();
+  if (fromSelect) return fromSelect;
+  return localStorage.getItem('gemini_tts_voice_preset') || DEFAULT_TTS_VOICE_PRESET;
 }
 
 function attachAiSpeechButton(bubbleRow, bubble) {
@@ -1569,6 +1583,7 @@ function setupEventListeners() {
         profileEditBtn.textContent = '저장';
         aiNameInput.disabled = false;
         profileSystemPrompt.disabled = false;
+        if (voicePresetSelect) voicePresetSelect.disabled = false;
         profileAvatarLarge.classList.add('editable');
         if (changeAvatarBtn) changeAvatarBtn.style.display = 'block';
         setTimeout(() => aiNameInput.focus(), 100);
@@ -1578,6 +1593,7 @@ function setupEventListeners() {
         profileEditBtn.textContent = '편집';
         aiNameInput.disabled = true;
         profileSystemPrompt.disabled = true;
+        if (voicePresetSelect) voicePresetSelect.disabled = true;
         profileAvatarLarge.classList.remove('editable');
         if (changeAvatarBtn) changeAvatarBtn.style.display = 'none';
       }
@@ -1603,10 +1619,18 @@ function setupEventListeners() {
 
     localStorage.setItem('ai_name', newName);
     localStorage.setItem('ai_avatar', newAvatar);
+    localStorage.setItem('gemini_tts_voice_preset', getSelectedTtsVoicePreset());
     gemini.setSystemPrompt(newPrompt);
 
     updateAIProfileUI();
     showToast('프로필 정보가 저장되었습니다 ✓');
+  }
+
+  if (testVoicePresetBtn) {
+    testVoicePresetBtn.addEventListener('click', () => {
+      const profileName = (aiNameInput?.value || localStorage.getItem('ai_name') || 'AI Assistant').trim() || 'AI Assistant';
+      speakAiMessage(`Hi there! I'm ${profileName}. How are you?`, testVoicePresetBtn);
+    });
   }
 
   // Change avatar logic (Photo / Emoji)

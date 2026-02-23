@@ -2223,6 +2223,49 @@ body.native-sheet-open {
   letter-spacing: -0.2px;
 }
 
+.voice-row {
+  gap: 12px;
+}
+
+.profile-voice-select {
+  min-width: 130px;
+  max-width: 52%;
+  border: 1px solid rgba(120, 120, 128, 0.24);
+  background: rgba(120, 120, 128, 0.1);
+  color: inherit;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 14px;
+  outline: none;
+}
+
+.profile-voice-select:disabled {
+  opacity: 0.6;
+}
+
+.profile-voice-test-btn {
+  border: 1px solid rgba(76, 183, 255, 0.32);
+  background: rgba(76, 183, 255, 0.12);
+  color: #2f9fe4;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.profile-voice-test-btn.loading {
+  background: rgba(255, 214, 10, 0.16);
+  border-color: rgba(255, 214, 10, 0.28);
+  color: #b88d00;
+  animation: ttsPulse 0.9s ease-in-out infinite;
+}
+
+.profile-voice-test-btn.speaking {
+  background: rgba(76, 183, 255, 0.2);
+  border-color: rgba(76, 183, 255, 0.34);
+  color: #1f8dd1;
+}
+
 .section-row:last-child {
   border-bottom: none;
 }
