@@ -25,6 +25,7 @@ let hasMessageIdChanges = false;
 let nativeSheetRequestId = 0;
 let nativeSheetRefs = null;
 let openNativeSwipeRow = null;
+let openDictionarySwipeRow = null;
 let aiSpeechState = {
   audio: null,
   button: null,
@@ -1898,6 +1899,9 @@ function attachDictionarySwipeHandlers() {
     const closeRow = () => {
       row.classList.remove('revealed');
       entryCard.style.transform = '';
+      if (openDictionarySwipeRow === row) {
+        openDictionarySwipeRow = null;
+      }
     };
 
     const onCategoryAction = async (event) => {
@@ -1954,6 +1958,12 @@ function attachDictionarySwipeHandlers() {
       if (target instanceof HTMLElement && target.closest('.dictionary-delete-btn, .dictionary-category-action-btn')) {
         return;
       }
+      if (openDictionarySwipeRow && openDictionarySwipeRow !== row) {
+        const prevCard = openDictionarySwipeRow.querySelector('.dictionary-entry');
+        if (prevCard instanceof HTMLElement) prevCard.style.transform = '';
+        openDictionarySwipeRow.classList.remove('revealed');
+        openDictionarySwipeRow = null;
+      }
       if (!event.touches || event.touches.length !== 1) return;
       startX = event.touches[0].clientX;
       startY = event.touches[0].clientY;
@@ -1984,8 +1994,14 @@ function attachDictionarySwipeHandlers() {
       const shouldReveal = tx <= -48;
 
       if (shouldReveal) {
+        if (openDictionarySwipeRow && openDictionarySwipeRow !== row) {
+          const prevCard = openDictionarySwipeRow.querySelector('.dictionary-entry');
+          if (prevCard instanceof HTMLElement) prevCard.style.transform = '';
+          openDictionarySwipeRow.classList.remove('revealed');
+        }
         row.classList.add('revealed');
         entryCard.style.transform = `translateX(-${MAX_SWIPE}px)`;
+        openDictionarySwipeRow = row;
       } else {
         closeRow();
       }

@@ -2023,7 +2023,7 @@ body.native-sheet-open {
 .dictionary-sheet-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 3200;
   pointer-events: none;
 }
 
