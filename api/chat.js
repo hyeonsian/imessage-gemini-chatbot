@@ -17,13 +17,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { message = '', model, history } = req.body || {};
+  const { message = '', model, history, memorySummary = '' } = req.body || {};
   const input = String(message || '').trim();
   if (!input) return res.status(400).json({ error: 'message is required' });
 
   const apiKey = getServerApiKey();
   if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
   const resolvedModel = getModelFromRequest({ model });
+  const longTermMemory = String(memorySummary || '').trim().slice(0, 1600);
   const normalizedHistory = normalizeChatHistory(history);
   const contents = [
     ...normalizedHistory.map((item) => ({
@@ -33,6 +34,8 @@ export default async function handler(req, res) {
     { role: 'user', parts: [{ text: input }] },
   ];
 
+  const systemPrompt = buildSystemPromptWithMemory(longTermMemory);
+
   try {
     const data = await callGeminiGenerateContent({
       apiKey,
@@ -40,7 +43,7 @@ export default async function handler(req, res) {
       body: {
         contents,
         systemInstruction: {
-          parts: [{ text: DEFAULT_SYSTEM_PROMPT }],
+          parts: [{ text: systemPrompt }],
         },
         generationConfig: {
           temperature: 0.8,
@@ -81,4 +84,12 @@ function normalizeChatHistory(history) {
 
   // Keep recent context only to control token usage/latency.
   return normalized.slice(-16);
+}
+
+function buildSystemPromptWithMemory(memorySummary) {
+  if (!memorySummary) return DEFAULT_SYSTEM_PROMPT;
+  return `${DEFAULT_SYSTEM_PROMPT}
+
+Long-term memory about the user (use only when relevant, naturally, and do not mention this memory list explicitly):
+${memorySummary}`;
 }
