@@ -81,6 +81,7 @@ const dictionaryView = document.getElementById('dictionaryView');
 const dictionaryPageList = document.getElementById('dictionaryPageList');
 const dictionaryBackBtn = document.getElementById('dictionaryBackBtn');
 const dictionaryCategoriesBtn = document.getElementById('dictionaryCategoriesBtn');
+const dictionaryPageSubtitle = document.getElementById('dictionaryPageSubtitle');
 const dictionaryBtn = document.getElementById('dictionaryBtn');
 const dictionaryCategoryView = document.getElementById('dictionaryCategoryView');
 const dictionaryCategoryList = document.getElementById('dictionaryCategoryList');
@@ -1657,6 +1658,14 @@ function getDictionaryCategoryName(categoryId) {
   return category?.name || 'All';
 }
 
+function updateDictionaryHeaderCategorySubtitle() {
+  if (!dictionaryPageSubtitle) return;
+  const isCustomCategory = dictionaryCategoryFilterId && dictionaryCategoryFilterId !== 'all';
+  const label = isCustomCategory ? getDictionaryCategoryName(dictionaryCategoryFilterId) : '';
+  dictionaryPageSubtitle.textContent = label;
+  dictionaryPageSubtitle.hidden = !label;
+}
+
 function renderDictionaryCategoryManagerPage() {
   if (!dictionaryCategoryList) return;
   const categories = getDictionaryCategories();
@@ -1781,6 +1790,7 @@ function renderDictionaryPage() {
       ${renderDictionaryFilterRow()}
       <div class="dictionary-empty">아직 저장된 표현이 없습니다.</div>
     `;
+    updateDictionaryHeaderCategorySubtitle();
     attachDictionaryFilterHandlers();
     return;
   }
@@ -1810,16 +1820,11 @@ function renderDictionaryPage() {
   `).join('');
 
   dictionaryPageList.innerHTML = `
-    ${dictionaryCategoryFilterId !== 'all' ? `
-      <div class="dictionary-active-category-banner">
-        <span class="dictionary-active-category-label">Category</span>
-        <span class="dictionary-active-category-name">${escapeHtml(getDictionaryCategoryName(dictionaryCategoryFilterId))}</span>
-      </div>
-    ` : ''}
     ${renderDictionaryFilterRow()}
     ${listHtml}
   `;
 
+  updateDictionaryHeaderCategorySubtitle();
   attachDictionaryFilterHandlers();
   attachDictionarySwipeHandlers();
 }
@@ -1914,6 +1919,7 @@ function formatDictionaryTimestamp(isoString) {
 
 function openDictionaryPage() {
   renderDictionaryPage();
+  updateDictionaryHeaderCategorySubtitle();
   if (dictionaryView) dictionaryView.classList.add('active');
   if (dictionaryCategoryView) dictionaryCategoryView.classList.remove('active');
   if (conversationListView) conversationListView.classList.remove('active');
