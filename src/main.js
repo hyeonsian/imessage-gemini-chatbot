@@ -1583,7 +1583,6 @@ function setupEventListeners() {
         profileEditBtn.textContent = '저장';
         aiNameInput.disabled = false;
         profileSystemPrompt.disabled = false;
-        if (voicePresetSelect) voicePresetSelect.disabled = false;
         profileAvatarLarge.classList.add('editable');
         if (changeAvatarBtn) changeAvatarBtn.style.display = 'block';
         setTimeout(() => aiNameInput.focus(), 100);
@@ -1593,7 +1592,6 @@ function setupEventListeners() {
         profileEditBtn.textContent = '편집';
         aiNameInput.disabled = true;
         profileSystemPrompt.disabled = true;
-        if (voicePresetSelect) voicePresetSelect.disabled = true;
         profileAvatarLarge.classList.remove('editable');
         if (changeAvatarBtn) changeAvatarBtn.style.display = 'none';
       }
@@ -1630,6 +1628,13 @@ function setupEventListeners() {
     testVoicePresetBtn.addEventListener('click', () => {
       const profileName = (aiNameInput?.value || localStorage.getItem('ai_name') || 'AI Assistant').trim() || 'AI Assistant';
       speakAiMessage(`Hi there! I'm ${profileName}. How are you?`, testVoicePresetBtn);
+    });
+  }
+
+  if (voicePresetSelect) {
+    voicePresetSelect.addEventListener('change', () => {
+      localStorage.setItem('gemini_tts_voice_preset', getSelectedTtsVoicePreset());
+      showToast('음성 프리셋이 저장되었습니다 ✓');
     });
   }
 

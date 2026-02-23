@@ -2154,7 +2154,9 @@ body.native-sheet-open {
 
 .profile-sections {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   padding: 8px 14px calc(26px + var(--safe-area-bottom));
   background: #f2f2f7;
 }
