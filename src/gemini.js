@@ -206,7 +206,31 @@ Sentence:
             return this._buildFallbackNativeAlternatives(text);
         }
 
-        const jsonPrompt = `You rewrite English learner sentences into native-sounding alternatives.
+        const hasHangul = this._containsHangul(text);
+        const jsonPrompt = hasHangul
+            ? `You are helping a Korean learner rewrite a mixed Korean+English chat message into natural everyday English.
+Return ONLY valid JSON (no markdown, no extra text) with this schema:
+{
+  "alternatives": [
+    { "text": "string", "tone": "string", "nuance": "string" },
+    { "text": "string", "tone": "string", "nuance": "string" },
+    { "text": "string", "tone": "string", "nuance": "string" }
+  ]
+}
+Rules:
+- Understand any Korean words/phrases and rewrite the FULL message in natural English.
+- Provide exactly 3 alternatives in English only.
+- Keep the original intent.
+- Each "text" must be very common spoken English used by natives daily.
+- Keep wording simple (CEFR A2-B1), short, and easy to reuse.
+- Do NOT repeat the original message unchanged.
+- Make each option meaningfully different in tone/nuance.
+- Keep each nuance short (max 12 words).
+- Never prepend meta phrases like "I mean," or "A more natural way...".
+
+Mixed message:
+"${text}"`
+            : `You rewrite English learner sentences into native-sounding alternatives.
 Return ONLY valid JSON (no markdown, no extra text) with this schema:
 {
   "alternatives": [
@@ -223,6 +247,7 @@ Rules:
 - Avoid advanced vocabulary, idioms, figurative expressions, and formal business wording.
 - Make each option meaningfully different in tone/nuance.
 - Keep each nuance short (max 12 words).
+- Do NOT repeat the original message unchanged.
 - Never prepend meta phrases like "I mean," or "A more natural way...".
 
 Sentence:
@@ -262,18 +287,41 @@ Sentence:
             const rawJson = await callModel(jsonPrompt, 'application/json');
             const parsed = this._parseJsonSafely(rawJson);
             const normalized = this._normalizeNativeAlternatives(parsed?.alternatives || []);
-            if (normalized.length === 3) {
+            if (normalized.length === 3 && !this._isWeakNativeAlternativesResult(text, normalized)) {
                 return normalized;
             }
 
+            // 1.5 try: stricter JSON retry if model echoed source or produced weak output
+            const strictRetryPrompt = `Rewrite the message into 3 natural alternatives and return ONLY JSON.
+Schema:
+{"alternatives":[{"text":"string","tone":"string","nuance":"string"},{"text":"string","tone":"string","nuance":"string"},{"text":"string","tone":"string","nuance":"string"}]}
+Rules:
+- Output English only.
+- Each option must differ from the original text and from each other.
+- Do not copy the source text.
+- Use common everyday native chat English (A2-B1).
+- Keep meaning.
+- No meta phrases.
+Source:
+"${text}"`;
+            const retryJson = await callModel(strictRetryPrompt, 'application/json');
+            const retryParsed = this._parseJsonSafely(retryJson);
+            const retryNormalized = this._normalizeNativeAlternatives(retryParsed?.alternatives || []);
+            if (retryNormalized.length === 3 && !this._isWeakNativeAlternativesResult(text, retryNormalized)) {
+                return retryNormalized;
+            }
+
             // 2nd try: robust delimiter-based plain text fallback
-            const fallbackPrompt = `Rewrite this sentence into 3 very common native alternatives.
+            const fallbackPrompt = `Rewrite this ${hasHangul ? 'mixed Korean+English message' : 'sentence'} into 3 very common native alternatives.
 Output format (exactly 3 lines):
 1) <sentence> || <tone> || <short nuance>
 2) <sentence> || <tone> || <short nuance>
 3) <sentence> || <tone> || <short nuance>
 No extra lines.
-Use easy everyday English only. No "I mean," or meta-intro phrases.
+Use easy everyday English only.
+Output English only.
+Do not repeat the source text unchanged.
+No "I mean," or meta-intro phrases.
 
 Sentence:
 "${text}"`;
@@ -289,7 +337,7 @@ Sentence:
                 });
 
             const lineNormalized = this._normalizeNativeAlternatives(lineItems);
-            if (lineNormalized.length === 3) {
+            if (lineNormalized.length === 3 && !this._isWeakNativeAlternativesResult(text, lineNormalized)) {
                 return lineNormalized;
             }
 
@@ -464,7 +512,7 @@ Sentence:
     }
 
     _normalizeNativeAlternatives(alternatives) {
-        return alternatives
+        const normalized = alternatives
             .filter((item) => item && typeof item.text === 'string')
             .map((item) => ({
                 text: this._cleanAlternativeText(item.text),
@@ -472,7 +520,18 @@ Sentence:
                 nuance: typeof item.nuance === 'string' && item.nuance.trim() ? item.nuance.trim() : 'Natural phrasing'
             }))
             .filter((item) => item.text.length > 0)
-            .slice(0, 3);
+            .filter((item) => !/^same as original$/i.test(item.text));
+
+        const deduped = [];
+        const seen = new Set();
+        for (const item of normalized) {
+            const key = this._normalizeForComparison(item.text);
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            deduped.push(item);
+            if (deduped.length === 3) break;
+        }
+        return deduped;
     }
 
     _buildFallbackNativeAlternatives(text) {
@@ -511,12 +570,39 @@ Sentence:
     }
 
     _isMinorSentenceDifference(source, target) {
-        const normalize = (value) => String(value || '')
+        return this._normalizeForComparison(source) === this._normalizeForComparison(target);
+    }
+
+    _normalizeForComparison(value) {
+        return String(value || '')
             .trim()
             .replace(/[.!?]+$/g, '')
             .replace(/\s+/g, ' ')
             .toLowerCase();
-        return normalize(source) === normalize(target);
+    }
+
+    _containsHangul(value) {
+        return /[\u3131-\u318E\uAC00-\uD7A3]/.test(String(value || ''));
+    }
+
+    _isWeakNativeAlternativesResult(sourceText, alternatives) {
+        if (!Array.isArray(alternatives) || alternatives.length < 3) return true;
+        const sourceNorm = this._normalizeForComparison(sourceText);
+        const uniqueNorms = new Set(alternatives.map((item) => this._normalizeForComparison(item.text)));
+        if (uniqueNorms.size < 3) return true;
+
+        const sameAsSourceCount = alternatives.reduce((count, item) => (
+            count + (this._normalizeForComparison(item.text) === sourceNorm ? 1 : 0)
+        ), 0);
+        if (sameAsSourceCount >= 1) return true;
+
+        // If source includes Korean, require English-only outputs.
+        if (this._containsHangul(sourceText)) {
+            const hasHangulOutput = alternatives.some((item) => this._containsHangul(item.text));
+            if (hasHangulOutput) return true;
+        }
+
+        return false;
     }
 
     _splitIntoSentences(text) {
