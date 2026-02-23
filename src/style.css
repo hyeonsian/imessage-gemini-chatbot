@@ -560,6 +560,21 @@ body.native-sheet-open {
   position: relative;
 }
 
+.message-bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.message.sent .message-bubble-row {
+  justify-content: flex-end;
+}
+
+.message.received .message-bubble-row {
+  justify-content: flex-start;
+}
+
 .message.sent {
   align-items: flex-end;
 }
@@ -612,6 +627,31 @@ body.native-sheet-open {
 
 .bubble-native-action-btn:active {
   background: rgba(76, 183, 255, 0.28);
+}
+
+.bubble-tts-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(120, 120, 128, 0.16);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-bottom: 2px;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.bubble-tts-btn:active {
+  transform: scale(0.95);
+}
+
+.bubble-tts-btn.speaking {
+  background: rgba(76, 183, 255, 0.2);
+  color: #4cb7ff;
 }
 
 .bubble.search-match {

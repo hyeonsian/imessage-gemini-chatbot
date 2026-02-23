@@ -25,6 +25,10 @@ let hasMessageIdChanges = false;
 let nativeSheetRequestId = 0;
 let nativeSheetRefs = null;
 let openNativeSwipeRow = null;
+let aiSpeechState = {
+  utterance: null,
+  button: null,
+};
 let backSwipeState = {
   tracking: false,
   active: false,
@@ -239,6 +243,7 @@ function getModelName(model) {
 // Message Rendering
 // ===========================
 function renderMessages() {
+  stopAiSpeech();
   // Keep date divider
   chatMessages.innerHTML = '<div class="date-divider"><span>오늘</span></div>';
 
@@ -255,6 +260,8 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
   msgDiv.className = `message ${role === 'user' ? 'sent' : 'received'} `;
   if (!animate) msgDiv.style.animation = 'none';
 
+  const bubbleRow = document.createElement('div');
+  bubbleRow.className = 'message-bubble-row';
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   bubble.innerHTML = formatMessage(text);
@@ -266,6 +273,7 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
   if (role === 'ai') {
     bubble.dataset.original = text;
     bubble.dataset.translated = translation || '';
+    attachAiSpeechButton(bubbleRow, bubble);
 
     bubble.addEventListener('click', async () => {
       // Toggle transition with blur
@@ -374,7 +382,8 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
   timeEl.className = 'message-time';
   timeEl.textContent = time || formatTime(new Date());
 
-  msgDiv.appendChild(bubble);
+  bubbleRow.appendChild(bubble);
+  msgDiv.appendChild(bubbleRow);
   msgDiv.appendChild(timeEl);
   chatMessages.appendChild(msgDiv);
 
@@ -680,6 +689,112 @@ function showToast(message) {
   setTimeout(() => {
     toast.classList.remove('show');
   }, 3000);
+}
+
+function getPreferredEnglishVoice() {
+  if (!('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices() || [];
+  if (!voices.length) return null;
+
+  const scoreVoice = (voice) => {
+    const name = String(voice.name || '').toLowerCase();
+    const lang = String(voice.lang || '').toLowerCase();
+    let score = 0;
+    if (lang.startsWith('en-us')) score += 6;
+    else if (lang.startsWith('en-')) score += 3;
+    if (/samantha|alex|siri|google us english|ava|allison|enhanced|premium|natural/.test(name)) score += 4;
+    if (voice.default) score += 2;
+    return score;
+  };
+
+  return [...voices]
+    .filter((voice) => String(voice.lang || '').toLowerCase().startsWith('en'))
+    .sort((a, b) => scoreVoice(b) - scoreVoice(a))[0] || null;
+}
+
+function stopAiSpeech() {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  if (aiSpeechState.button) {
+    aiSpeechState.button.classList.remove('speaking');
+    aiSpeechState.button.setAttribute('aria-pressed', 'false');
+  }
+  aiSpeechState.utterance = null;
+  aiSpeechState.button = null;
+}
+
+function speakAiMessage(text, buttonEl) {
+  if (!('speechSynthesis' in window) || typeof window.SpeechSynthesisUtterance === 'undefined') {
+    showToast('이 브라우저는 음성 재생을 지원하지 않습니다.');
+    return;
+  }
+
+  const speakText = String(text || '').trim();
+  if (!speakText) return;
+
+  if (aiSpeechState.button === buttonEl && window.speechSynthesis.speaking) {
+    stopAiSpeech();
+    return;
+  }
+
+  stopAiSpeech();
+
+  const utterance = new SpeechSynthesisUtterance(speakText);
+  utterance.lang = 'en-US';
+  utterance.rate = 0.98;
+  utterance.pitch = 1;
+  utterance.volume = 1;
+  const preferredVoice = getPreferredEnglishVoice();
+  if (preferredVoice) utterance.voice = preferredVoice;
+
+  utterance.onend = () => {
+    if (aiSpeechState.button === buttonEl) {
+      buttonEl.classList.remove('speaking');
+      buttonEl.setAttribute('aria-pressed', 'false');
+      aiSpeechState.button = null;
+      aiSpeechState.utterance = null;
+    }
+  };
+  utterance.onerror = () => {
+    if (aiSpeechState.button === buttonEl) {
+      buttonEl.classList.remove('speaking');
+      buttonEl.setAttribute('aria-pressed', 'false');
+      aiSpeechState.button = null;
+      aiSpeechState.utterance = null;
+    }
+    showToast('음성 재생 중 오류가 발생했습니다.');
+  };
+
+  aiSpeechState.utterance = utterance;
+  aiSpeechState.button = buttonEl;
+  buttonEl.classList.add('speaking');
+  buttonEl.setAttribute('aria-pressed', 'true');
+  window.speechSynthesis.speak(utterance);
+}
+
+function attachAiSpeechButton(bubbleRow, bubble) {
+  if (!bubbleRow || !bubble) return;
+  const ttsBtn = document.createElement('button');
+  ttsBtn.className = 'bubble-tts-btn';
+  ttsBtn.type = 'button';
+  ttsBtn.setAttribute('aria-label', 'Play message audio');
+  ttsBtn.setAttribute('aria-pressed', 'false');
+  ttsBtn.innerHTML = `
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 10H8L13 6V18L8 14H4V10Z" fill="currentColor"/>
+      <path d="M16 9.5C17 10.4 17.6 11.6 17.6 13C17.6 14.4 17 15.6 16 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M18.7 7C20.3 8.6 21.2 10.7 21.2 13C21.2 15.3 20.3 17.4 18.7 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  `;
+
+  ttsBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const sourceText = bubble.dataset.original || bubble.textContent || '';
+    speakAiMessage(sourceText, ttsBtn);
+  });
+
+  bubbleRow.appendChild(ttsBtn);
 }
 
 function setupUserBubbleNativeSwipeAction(messageEl, bubble, context = {}) {
