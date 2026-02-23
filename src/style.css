@@ -921,6 +921,10 @@ body.native-sheet-open {
   color: #f6fff8;
 }
 
+.grammar-original-text {
+  color: rgba(255, 255, 255, 0.97);
+}
+
 .grammar-save-btn {
   margin-top: 6px;
   border: 1px solid rgba(255, 255, 255, 0.35);

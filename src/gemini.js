@@ -180,9 +180,17 @@ Text:
                 .filter((edit) => !this._isMinorGrammarEdit(edit.wrong, edit.right));
 
             const hasErrors = Boolean(parsed?.hasErrors) && normalizedEdits.length > 0;
-            const correctedText = typeof parsed?.correctedText === 'string' && parsed.correctedText.trim()
+            const correctedTextRaw = typeof parsed?.correctedText === 'string' && parsed.correctedText.trim()
                 ? parsed.correctedText.trim()
                 : text;
+            const correctedTextHeuristic = this._applyGrammarEditsToText(text, normalizedEdits);
+            const correctedText = (
+                hasErrors
+                && !this._correctedTextCoversEdits(text, correctedTextRaw, normalizedEdits)
+                && this._correctedTextCoversEdits(text, correctedTextHeuristic, normalizedEdits)
+            )
+                ? correctedTextHeuristic
+                : correctedTextRaw;
             const feedback = typeof parsed?.feedback === 'string' && parsed.feedback.trim()
                 ? parsed.feedback.trim()
                 : 'Looks good overall.';
@@ -710,6 +718,57 @@ ${raw}`;
 
     _containsHangul(value) {
         return /[\u3131-\u318E\uAC00-\uD7A3]/.test(String(value || ''));
+    }
+
+    _correctedTextCoversEdits(sourceText, correctedText, edits) {
+        const source = String(sourceText || '');
+        const corrected = String(correctedText || '');
+        if (!corrected.trim()) return false;
+        if (!Array.isArray(edits) || edits.length === 0) return true;
+
+        const sourceLower = source.toLowerCase();
+        const correctedLower = corrected.toLowerCase();
+
+        for (const edit of edits) {
+            const wrong = String(edit?.wrong || '').trim();
+            const right = String(edit?.right || '').trim();
+            if (!wrong || !right) continue;
+
+            const wrongLower = wrong.toLowerCase();
+            const rightLower = right.toLowerCase();
+
+            if (!sourceLower.includes(wrongLower)) continue;
+
+            const wrongStillPresent = correctedLower.includes(wrongLower);
+            const rightPresent = correctedLower.includes(rightLower);
+            if (wrongStillPresent || !rightPresent) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    _applyGrammarEditsToText(sourceText, edits) {
+        let next = String(sourceText || '');
+        if (!next || !Array.isArray(edits) || edits.length === 0) return next;
+
+        const sortedEdits = [...edits]
+            .filter((edit) => edit && typeof edit.wrong === 'string' && typeof edit.right === 'string')
+            .sort((a, b) => String(b.wrong).length - String(a.wrong).length);
+
+        for (const edit of sortedEdits) {
+            const wrong = String(edit.wrong || '').trim();
+            const right = String(edit.right || '').trim();
+            if (!wrong || !right || wrong === right) continue;
+
+            const escapedWrong = wrong.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escapedWrong, 'i');
+            if (regex.test(next)) {
+                next = next.replace(regex, right);
+            }
+        }
+
+        return next;
     }
 
     _isWeakNativeAlternativesResult(sourceText, alternatives) {

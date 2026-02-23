@@ -380,7 +380,7 @@ function appendMessageBubble(role, text, time, animate = true, translation = nul
           saveMessages();
         }
 
-        bubble.innerHTML = formatGrammarReview(review);
+	        bubble.innerHTML = formatGrammarReview(review, bubble.dataset.original || '');
         bubble.classList.add('is-reviewed');
         removeGrammarOkIndicator(bubble);
 
@@ -581,7 +581,8 @@ function formatMessage(text) {
     .replace(/^\- (.*)/gm, '• $1');
 }
 
-function formatGrammarReview(review) {
+function formatGrammarReview(review, originalMessage = '') {
+  const original = escapeHtml(originalMessage || '');
   const corrected = escapeHtml(review.correctedText || '');
   const edits = Array.isArray(review.edits) ? review.edits : [];
   const feedback = escapeHtml(review.feedback || 'Looks good overall.');
@@ -630,6 +631,10 @@ function formatGrammarReview(review) {
   return `
     <div class="grammar-review">
       <div class="grammar-title">Native feedback</div>
+      ${original ? `
+        <div class="grammar-corrected-label">Your message</div>
+        <div class="grammar-corrected-text grammar-original-text">${original.replace(/\r\n|\r|\n/g, '<br>')}</div>
+      ` : ''}
       ${feedbackPointsHtml}
       ${editsHtml}
       ${review.hasErrors ? `
