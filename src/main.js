@@ -770,7 +770,6 @@ function formatGrammarReview(review, originalMessage = '') {
 
   const feedbackPointsHtml = feedbackPoints.length > 0
     ? `
-      <div class="grammar-feedback-text">${feedback}</div>
       <div class="grammar-points">
         ${feedbackPoints.map((item) => {
           const partRaw = String(item?.part || '').trim();
@@ -787,8 +786,6 @@ function formatGrammarReview(review, originalMessage = '') {
           const detailReason = escapeHtml(detailReasonRaw);
           return `
             <div class="grammar-point-item">
-              <div class="grammar-point-part">${part}</div>
-              ${issue ? `<div class="grammar-point-issue">${issue}</div>` : ''}
               ${fix ? `
                 <div class="grammar-point-edit-row">
                   <span class="grammar-wrong">${part}</span>
@@ -796,6 +793,7 @@ function formatGrammarReview(review, originalMessage = '') {
                   <span class="grammar-right"><strong>${fix}</strong></span>
                 </div>
               ` : ''}
+              ${issue ? `<div class="grammar-point-issue">${issue}</div>` : ''}
               ${detailReason && normalizeReviewTextKey(detailReason) !== normalizeReviewTextKey(issueRaw)
                 ? `<div class="grammar-point-detail">${detailReason}</div>`
                 : ''}
@@ -810,27 +808,28 @@ function formatGrammarReview(review, originalMessage = '') {
 
   return `
     <div class="grammar-review">
-      <div class="grammar-title">Native feedback</div>
       ${originalMessage ? `
+        <div class="grammar-corrected-label grammar-section-title">Your message</div>
         <div class="grammar-original-box">
-          <div class="grammar-corrected-label">Your message</div>
           <div class="grammar-corrected-text grammar-original-text">${originalHtml}</div>
         </div>
       ` : ''}
+      <div class="grammar-corrected-label grammar-section-title">Native feedback</div>
+      ${!feedbackPoints.length ? `<div class="grammar-feedback-text">${feedback}</div>` : ''}
       ${feedbackPointsHtml}
       ${normalizedReview.hasErrors ? `
-        <div class="grammar-corrected-label">Corrected sentence</div>
+        <div class="grammar-corrected-label grammar-section-title">Corrected sentence</div>
         <div class="grammar-corrected-text">${corrected.replace(/\r\n|\r|\n/g, '<br>')}</div>
         <button class="grammar-save-btn" type="button" aria-label="수정 문장을 내 사전에 추가">
           + Save corrected sentence
         </button>
       ` : ''}
       ${naturalRewrite ? `
-        <div class="grammar-corrected-label">Natural rewrite</div>
+        <div class="grammar-corrected-label grammar-section-title">Natural rewrite</div>
         <div class="grammar-corrected-text">${naturalRewrite.replace(/\r\n|\r|\n/g, '<br>')}</div>
       ` : ''}
       ${naturalAlternative ? `
-        <div class="grammar-corrected-label">More natural way</div>
+        <div class="grammar-corrected-label grammar-section-title">More natural way</div>
         <div class="grammar-corrected-text">${naturalAlternative.replace(/\r\n|\r|\n/g, '<br>')}</div>
         ${naturalReason ? `<div class="grammar-reason">${naturalReason}</div>` : ''}
       ` : ''}
