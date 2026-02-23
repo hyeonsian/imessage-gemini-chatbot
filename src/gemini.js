@@ -207,6 +207,7 @@ Sentence:
         }
 
         const hasHangul = this._containsHangul(text);
+        let preparedSourceText = String(text || '').trim();
         const jsonPrompt = hasHangul
             ? `You are helping a Korean learner rewrite a mixed Korean+English chat message into natural everyday English.
 Return ONLY valid JSON (no markdown, no extra text) with this schema:
@@ -283,11 +284,25 @@ Sentence:
                 return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
             };
 
+            if (hasHangul) {
+                const prepared = await this._prepareNativeAlternativesSource(text, callModel);
+                if (prepared) {
+                    preparedSourceText = prepared;
+                }
+            }
+
+            const sourceTextForGeneration = preparedSourceText || String(text || '').trim();
+            const sourceLabel = hasHangul ? 'Mixed message' : 'Sentence';
+            const sourcePromptBlock = `${sourceLabel}:\n"${sourceTextForGeneration}"`;
+            const activeJsonPrompt = hasHangul
+                ? `${jsonPrompt}\n\nEnglish intent to rewrite (use this as the source meaning if provided):\n"${sourceTextForGeneration}"`
+                : jsonPrompt.replace(`Sentence:\n"${text}"`, sourcePromptBlock);
+
             // 1st try: strict JSON response
-            const rawJson = await callModel(jsonPrompt, 'application/json');
+            const rawJson = await callModel(activeJsonPrompt, 'application/json');
             const parsed = this._parseJsonSafely(rawJson);
             const normalized = this._normalizeNativeAlternatives(parsed?.alternatives || []);
-            if (normalized.length === 3 && !this._isWeakNativeAlternativesResult(text, normalized)) {
+            if (normalized.length === 3 && !this._isWeakNativeAlternativesResult(sourceTextForGeneration, normalized)) {
                 return normalized;
             }
 
@@ -303,11 +318,11 @@ Rules:
 - Keep meaning.
 - No meta phrases.
 Source:
-"${text}"`;
+"${sourceTextForGeneration}"`;
             const retryJson = await callModel(strictRetryPrompt, 'application/json');
             const retryParsed = this._parseJsonSafely(retryJson);
             const retryNormalized = this._normalizeNativeAlternatives(retryParsed?.alternatives || []);
-            if (retryNormalized.length === 3 && !this._isWeakNativeAlternativesResult(text, retryNormalized)) {
+            if (retryNormalized.length === 3 && !this._isWeakNativeAlternativesResult(sourceTextForGeneration, retryNormalized)) {
                 return retryNormalized;
             }
 
@@ -324,7 +339,7 @@ Do not repeat the source text unchanged.
 No "I mean," or meta-intro phrases.
 
 Sentence:
-"${text}"`;
+"${sourceTextForGeneration}"`;
             const rawList = await callModel(fallbackPrompt);
             const lineItems = rawList
                 .split('\n')
@@ -337,14 +352,44 @@ Sentence:
                 });
 
             const lineNormalized = this._normalizeNativeAlternatives(lineItems);
-            if (lineNormalized.length === 3 && !this._isWeakNativeAlternativesResult(text, lineNormalized)) {
+            if (lineNormalized.length === 3 && !this._isWeakNativeAlternativesResult(sourceTextForGeneration, lineNormalized)) {
                 return lineNormalized;
+            }
+
+            // Final salvage: ask for plain English rewrites only (no JSON) if previous formats failed.
+            const salvagePrompt = `Rewrite the message into 3 simple native chat English options.
+First, infer the intended meaning (including any Korean fragments and typos).
+Then output exactly 3 lines in English only:
+1) <sentence>
+2) <sentence>
+3) <sentence>
+Rules:
+- Do not copy the original text.
+- Use common daily spoken English.
+- Keep meaning.
+
+Message:
+"${text}"`;
+            const salvageRaw = await callModel(salvagePrompt);
+            const salvageItems = salvageRaw
+                .split('\n')
+                .map((line) => line.trim())
+                .filter(Boolean)
+                .map((line) => line.replace(/^\d+[.)]\s*/, ''))
+                .map((line) => ({
+                    text: line,
+                    tone: 'Natural',
+                    nuance: 'Everyday phrasing'
+                }));
+            const salvageNormalized = this._normalizeNativeAlternatives(salvageItems);
+            if (salvageNormalized.length === 3 && !this._isWeakNativeAlternativesResult(sourceTextForGeneration, salvageNormalized)) {
+                return salvageNormalized;
             }
 
             throw new Error('Insufficient alternatives');
         } catch (error) {
             console.error('Native alternatives error:', error);
-            return this._buildFallbackNativeAlternatives(text);
+            return this._buildFallbackNativeAlternatives(preparedSourceText || text);
         }
     }
 
@@ -536,11 +581,42 @@ Sentence:
 
     _buildFallbackNativeAlternatives(text) {
         const compact = (text || '').trim();
+        const englishOnly = this._containsHangul(compact)
+            ? compact.replace(/[\u3131-\u318E\uAC00-\uD7A3]+/g, '').replace(/\s+/g, ' ').trim()
+            : compact;
+        const base = englishOnly || compact || 'Could you say that again?';
         return [
-            { text: compact, tone: 'Neutral', nuance: 'Original expression' },
-            { text: compact, tone: 'Casual', nuance: 'Friendly everyday tone' },
-            { text: compact, tone: 'Polite', nuance: 'Softer and more polite tone' }
+            { text: base, tone: 'Neutral', nuance: 'Closest available rewrite' },
+            { text: `I feel like ${base}`, tone: 'Casual', nuance: 'Casual fallback wording' },
+            { text: `I think ${base}`, tone: 'Direct', nuance: 'Direct fallback wording' }
         ];
+    }
+
+    async _prepareNativeAlternativesSource(text, callModel) {
+        const raw = String(text || '').trim();
+        if (!raw || !this._containsHangul(raw)) return raw;
+
+        const prompt = `Convert this mixed Korean+English chat message into ONE natural English sentence that preserves the intended meaning.
+Rules:
+- Output English only.
+- Do not explain.
+- Do not add quotes.
+- Keep it simple and conversational.
+- Fix obvious typos while preserving intent.
+
+Message:
+${raw}`;
+
+        try {
+            const prepared = this._cleanAlternativeText(await callModel(prompt));
+            if (!prepared) return raw;
+            if (this._containsHangul(prepared)) return raw;
+            if (this._isMinorSentenceDifference(raw, prepared)) return raw;
+            return prepared;
+        } catch (error) {
+            console.warn('Prepare native alternatives source error:', error);
+            return raw;
+        }
     }
 
     _isMinorGrammarEdit(wrong, right) {
