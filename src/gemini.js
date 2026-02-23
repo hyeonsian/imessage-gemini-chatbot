@@ -123,28 +123,52 @@ Sentence:
 
         try {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.effectiveApiKey}`;
-            const body = {
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+            const callModel = async (analysisPrompt) => {
+                const body = {
+                    contents: [{ role: 'user', parts: [{ text: analysisPrompt }] }],
+                    generationConfig: {
+                        temperature: 0.1,
+                        maxOutputTokens: 2048,
+                        responseMimeType: 'application/json'
+                    }
+                };
+
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+
+                const data = await res.json();
+                const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+                if (!raw) {
+                    throw new Error('No grammar analysis returned');
+                }
+                return raw;
             };
 
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
+            let parsed;
+            try {
+                parsed = this._parseJsonSafely(await callModel(prompt));
+            } catch (primaryParseError) {
+                const retryPrompt = `Return ONLY valid JSON. No markdown. No explanation.
+Schema:
+{"hasErrors":boolean,"correctedText":"string","edits":[{"wrong":"string","right":"string","reason":"string"}],"feedback":"string","feedbackPoints":[{"part":"string","issue":"string","fix":"string"}],"naturalRewrite":"string","naturalAlternative":"string","naturalReason":"string"}
+Rules:
+- Find grammar mistakes, spelling/typos, awkward phrasing, and word choice issues.
+- Explicitly include typo corrections (example: leven -> level).
+- feedbackPoints must quote the problematic text in "part".
+- naturalRewrite rewrites the whole text naturally in everyday English.
+- Ignore capitalization-only and final punctuation-only issues.
+Text:
+"${text}"`;
+                parsed = this._parseJsonSafely(await callModel(retryPrompt));
+                console.warn('Grammar check parse retry used:', primaryParseError);
             }
-
-            const data = await res.json();
-            const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-            if (!raw) {
-                throw new Error('No grammar analysis returned');
-            }
-
-            const parsed = this._parseJsonSafely(raw);
             const edits = Array.isArray(parsed?.edits) ? parsed.edits : [];
             const normalizedEdits = edits
                 .filter((edit) => edit && typeof edit.wrong === 'string' && typeof edit.right === 'string')
