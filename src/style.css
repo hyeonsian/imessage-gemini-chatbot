@@ -1860,6 +1860,18 @@ body.native-sheet-open {
   border-radius: 0;
 }
 
+.dictionary-entry-swipe.manual-sort {
+  overflow: visible;
+}
+
+.dictionary-entry-swipe.dragging {
+  z-index: 8;
+}
+
+.dictionary-entry-swipe.dragging .dictionary-entry {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
 .dictionary-delete-btn {
   position: absolute;
   top: 50%;
@@ -1898,6 +1910,38 @@ body.native-sheet-open {
 
 .dictionary-entry-swipe.revealed .dictionary-entry {
   transform: translateX(-124px);
+}
+
+.dictionary-reorder-handle-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 6px 0 4px;
+}
+
+.dictionary-reorder-handle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(120, 120, 128, 0.18);
+  background: rgba(120, 120, 128, 0.08);
+  color: var(--text-secondary);
+  border-radius: 10px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.dictionary-reorder-handle svg {
+  display: block;
+  opacity: 0.9;
+}
+
+.dictionary-reorder-handle span {
+  white-space: nowrap;
 }
 
 .dictionary-entry-meta-head {

@@ -1513,9 +1513,10 @@ function attachNativeOptionSwipeHandlers(alternatives, originalText, context = {
 function getDictionaryEntries() {
   const entries = JSON.parse(localStorage.getItem('native_dictionary_entries') || '[]');
   return Array.isArray(entries)
-    ? entries.map((entry) => ({
+    ? entries.map((entry, index) => ({
       ...entry,
       categoryIds: Array.isArray(entry?.categoryIds) ? entry.categoryIds.filter(Boolean) : [],
+      manualOrder: Number.isFinite(Number(entry?.manualOrder)) ? Number(entry.manualOrder) : index,
     }))
     : [];
 }
@@ -1579,6 +1580,7 @@ function promptCreateDictionaryCategory() {
 function isDictionaryCategoryVisible(entry) {
   if (dictionaryCategoryFilterId === 'all') return true;
   const ids = Array.isArray(entry?.categoryIds) ? entry.categoryIds : [];
+  if (dictionaryCategoryFilterId === 'uncategorized') return ids.length === 0;
   return ids.includes(dictionaryCategoryFilterId);
 }
 
@@ -1682,6 +1684,10 @@ function addDictionaryEntry(option, originalText = '', sourceSentAt = null, cate
   if (exists) return false;
 
   const createdAt = new Date().toISOString();
+  const minManualOrder = entries.reduce((min, entry, index) => {
+    const value = Number.isFinite(Number(entry?.manualOrder)) ? Number(entry.manualOrder) : index;
+    return Math.min(min, value);
+  }, 0);
   entries.unshift({
     id: generateMessageId(),
     entryType: 'native',
@@ -1691,6 +1697,7 @@ function addDictionaryEntry(option, originalText = '', sourceSentAt = null, cate
     tone: option.tone,
     nuance: option.nuance,
     categoryIds: Array.isArray(categoryIds) ? [...new Set(categoryIds.filter(Boolean))] : [],
+    manualOrder: minManualOrder - 1,
     createdAt,
   });
   saveDictionaryEntries(entries);
@@ -1710,6 +1717,10 @@ function addGrammarDictionaryEntry(originalText, review, sourceSentAt = null, ca
   if (exists) return false;
 
   const createdAt = new Date().toISOString();
+  const minManualOrder = entries.reduce((min, entry, index) => {
+    const value = Number.isFinite(Number(entry?.manualOrder)) ? Number(entry.manualOrder) : index;
+    return Math.min(min, value);
+  }, 0);
   const edits = Array.isArray(review?.edits) ? review.edits : [];
   const grammarEdits = edits
     .map((edit) => ({
@@ -1729,6 +1740,7 @@ function addGrammarDictionaryEntry(originalText, review, sourceSentAt = null, ca
     tone: '',
     nuance: '',
     categoryIds: Array.isArray(categoryIds) ? [...new Set(categoryIds.filter(Boolean))] : [],
+    manualOrder: minManualOrder - 1,
     grammarEdits,
     createdAt,
   });
@@ -1814,6 +1826,7 @@ function renderDictionaryFilterRow() {
 
 function getDictionaryCategoryName(categoryId) {
   if (!categoryId || categoryId === 'all') return 'All';
+  if (categoryId === 'uncategorized') return '미분류';
   const category = getDictionaryCategories().find((cat) => cat.id === categoryId);
   return category?.name || 'All';
 }
@@ -1822,6 +1835,7 @@ function getDictionarySortOptions() {
   return [
     { id: 'newest', label: '최신순' },
     { id: 'oldest', label: '오래된순' },
+    { id: 'manual', label: '수동 정렬 (드래그)' },
     { id: 'az', label: 'A-Z' },
     { id: 'za', label: 'Z-A' },
   ];
@@ -1830,6 +1844,13 @@ function getDictionarySortOptions() {
 function sortDictionaryEntries(entries) {
   const arr = [...entries];
   switch (dictionarySortMode) {
+    case 'manual':
+      return arr.sort((a, b) => {
+        const aOrder = Number.isFinite(Number(a?.manualOrder)) ? Number(a.manualOrder) : Number.MAX_SAFE_INTEGER;
+        const bOrder = Number.isFinite(Number(b?.manualOrder)) ? Number(b.manualOrder) : Number.MAX_SAFE_INTEGER;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      });
     case 'oldest':
       return arr.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
     case 'az':
@@ -1951,11 +1972,17 @@ function renderDictionaryCategoryManagerPage() {
   });
 
   const allCount = entries.length;
+  const uncategorizedCount = entries.filter((entry) => !Array.isArray(entry?.categoryIds) || entry.categoryIds.length === 0).length;
   const rows = [
     {
       id: 'all',
       name: '전체',
       count: allCount,
+    },
+    {
+      id: 'uncategorized',
+      name: '미분류',
+      count: uncategorizedCount,
     },
     ...categories.map((cat) => ({
       id: cat.id,
@@ -2054,6 +2081,7 @@ function updateDictionaryButtonBadge() {
 function renderDictionaryPage() {
   if (!dictionaryPageList) return;
   const entries = getDictionaryEntries();
+  const isManualSortMode = dictionarySortMode === 'manual';
   const visibleEntries = sortDictionaryEntries(entries.filter((entry) => (
     isDictionaryTypeVisible(getDictionaryEntryType(entry)) && isDictionaryCategoryVisible(entry)
   )));
@@ -2071,19 +2099,39 @@ function renderDictionaryPage() {
   const listHtml = visibleEntries.length === 0
     ? '<div class="dictionary-empty">선택한 필터에 맞는 항목이 없습니다.</div>'
     : visibleEntries.map((entry) => `
-    <div class="dictionary-entry-swipe" data-entry-id="${escapeHtml(entry.id || '')}">
+    <div class="dictionary-entry-swipe ${isManualSortMode ? 'manual-sort' : ''}" data-entry-id="${escapeHtml(entry.id || '')}">
+      ${isManualSortMode ? '' : `
       <button class="dictionary-delete-btn" type="button" aria-label="사전에서 삭제">−</button>
       <button class="dictionary-category-action-btn" type="button" aria-label="카테고리 편집">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
           <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
         </svg>
       </button>
+      `}
       <div class="dictionary-entry">
         <div class="dictionary-entry-meta-head">
           <span class="dictionary-entry-type ${getDictionaryEntryTypeClass(entry)}">${escapeHtml(getDictionaryEntryTag(entry))}</span>
           <span class="dictionary-entry-time">${escapeHtml(formatDictionaryTimestamp(entry.originalSentAt || entry.createdAt))}</span>
         </div>
         ${renderDictionaryCategoryBadges(entry)}
+        ${isManualSortMode ? `
+          <div class="dictionary-reorder-handle-row">
+            <button class="dictionary-reorder-handle" type="button" aria-label="드래그해서 정렬" title="드래그해서 정렬">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <circle cx="4" cy="4" r="1.2" fill="currentColor"/>
+                <circle cx="8" cy="4" r="1.2" fill="currentColor"/>
+                <circle cx="12" cy="4" r="1.2" fill="currentColor"/>
+                <circle cx="4" cy="8" r="1.2" fill="currentColor"/>
+                <circle cx="8" cy="8" r="1.2" fill="currentColor"/>
+                <circle cx="12" cy="8" r="1.2" fill="currentColor"/>
+                <circle cx="4" cy="12" r="1.2" fill="currentColor"/>
+                <circle cx="8" cy="12" r="1.2" fill="currentColor"/>
+                <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
+              </svg>
+              <span>Drag to reorder</span>
+            </button>
+          </div>
+        ` : ''}
         <div class="dictionary-entry-original-label">원래 메시지</div>
         <div class="dictionary-entry-original">${escapeHtml(entry.original || '-')}</div>
         ${renderDictionaryGrammarEdits(entry)}
@@ -2105,7 +2153,155 @@ function renderDictionaryPage() {
 
   updateDictionaryHeaderCategorySubtitle();
   attachDictionaryFilterHandlers();
-  attachDictionarySwipeHandlers();
+  if (isManualSortMode) {
+    openDictionarySwipeRow = null;
+    attachDictionaryReorderHandlers();
+  } else {
+    attachDictionarySwipeHandlers();
+  }
+}
+
+function persistDictionaryManualOrderFromDom() {
+  if (!dictionaryPageList) return;
+  const visibleIds = Array.from(dictionaryPageList.querySelectorAll('.dictionary-entry-swipe[data-entry-id]'))
+    .map((row) => row.getAttribute('data-entry-id') || '')
+    .filter(Boolean);
+  if (visibleIds.length === 0) return;
+
+  const entries = getDictionaryEntries();
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const visibleIdSet = new Set(visibleIds);
+  const visibleInDomOrder = visibleIds.map((id) => byId.get(id)).filter(Boolean);
+  if (visibleInDomOrder.length !== visibleIds.length) return;
+
+  const manualBase = [...entries].sort((a, b) => {
+    const aOrder = Number.isFinite(Number(a?.manualOrder)) ? Number(a.manualOrder) : Number.MAX_SAFE_INTEGER;
+    const bOrder = Number.isFinite(Number(b?.manualOrder)) ? Number(b.manualOrder) : Number.MAX_SAFE_INTEGER;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  });
+
+  let nextVisibleIndex = 0;
+  const merged = manualBase.map((entry) => {
+    if (!visibleIdSet.has(entry.id)) return entry;
+    const replacement = visibleInDomOrder[nextVisibleIndex];
+    nextVisibleIndex += 1;
+    return replacement || entry;
+  });
+
+  const updated = merged.map((entry, index) => ({
+    ...entry,
+    manualOrder: index,
+  }));
+  saveDictionaryEntries(updated);
+}
+
+function attachDictionaryReorderHandlers() {
+  if (!dictionaryPageList) return;
+  const rows = Array.from(dictionaryPageList.querySelectorAll('.dictionary-entry-swipe'));
+  if (rows.length < 2) return;
+
+  let activeRow = null;
+  let activeHandle = null;
+  let pointerId = null;
+  let startY = 0;
+  let lastY = 0;
+  let raf = 0;
+
+  const clearActive = (persist = false) => {
+    if (!activeRow) return;
+    if (raf) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    }
+    activeRow.classList.remove('dragging');
+    const card = activeRow.querySelector('.dictionary-entry');
+    if (card instanceof HTMLElement) card.style.transform = '';
+    if (activeHandle && pointerId !== null && activeHandle.hasPointerCapture?.(pointerId)) {
+      try {
+        activeHandle.releasePointerCapture(pointerId);
+      } catch {}
+    }
+    if (persist) persistDictionaryManualOrderFromDom();
+    activeRow = null;
+    activeHandle = null;
+    pointerId = null;
+    startY = 0;
+    lastY = 0;
+  };
+
+  const applyMove = () => {
+    raf = 0;
+    if (!activeRow) return;
+    const dy = lastY - startY;
+    const card = activeRow.querySelector('.dictionary-entry');
+    if (card instanceof HTMLElement) {
+      card.style.transform = `translateY(${dy}px)`;
+    }
+
+    const currentRows = Array.from(dictionaryPageList.querySelectorAll('.dictionary-entry-swipe'));
+    const otherRows = currentRows.filter((row) => row !== activeRow);
+    let beforeRow = null;
+    for (const row of otherRows) {
+      const rect = row.getBoundingClientRect();
+      const midpoint = rect.top + rect.height / 2;
+      if (lastY < midpoint) {
+        beforeRow = row;
+        break;
+      }
+    }
+    if (beforeRow) {
+      if (beforeRow !== activeRow.nextElementSibling) {
+        dictionaryPageList.insertBefore(activeRow, beforeRow);
+      }
+    } else if (dictionaryPageList.lastElementChild !== activeRow) {
+      dictionaryPageList.appendChild(activeRow);
+    }
+  };
+
+  rows.forEach((row) => {
+    const handle = row.querySelector('.dictionary-reorder-handle');
+    if (!(handle instanceof HTMLElement)) return;
+
+    const onPointerMove = (event) => {
+      if (!activeRow || event.pointerId !== pointerId) return;
+      event.preventDefault();
+      lastY = event.clientY;
+      if (!raf) raf = requestAnimationFrame(applyMove);
+    };
+
+    const onPointerEnd = (event) => {
+      if (!activeRow || event.pointerId !== pointerId) return;
+      event.preventDefault();
+      handle.removeEventListener('pointermove', onPointerMove);
+      handle.removeEventListener('pointerup', onPointerEnd);
+      handle.removeEventListener('pointercancel', onPointerEnd);
+      clearActive(true);
+    };
+
+    handle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (openDictionarySwipeRow) {
+        const prevCard = openDictionarySwipeRow.querySelector('.dictionary-entry');
+        if (prevCard instanceof HTMLElement) prevCard.style.transform = '';
+        openDictionarySwipeRow.classList.remove('revealed');
+        openDictionarySwipeRow = null;
+      }
+      clearActive(false);
+      activeRow = row;
+      activeHandle = handle;
+      pointerId = event.pointerId;
+      startY = event.clientY;
+      lastY = event.clientY;
+      row.classList.add('dragging');
+      handle.setPointerCapture?.(pointerId);
+      handle.addEventListener('pointermove', onPointerMove);
+      handle.addEventListener('pointerup', onPointerEnd);
+      handle.addEventListener('pointercancel', onPointerEnd);
+    });
+  });
 }
 
 function attachDictionarySwipeHandlers() {
