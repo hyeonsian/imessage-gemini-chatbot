@@ -53,6 +53,7 @@ let dictionaryFilterState = {
   grammar: true,
   native: true,
 };
+let dictionaryCategoryFilterId = 'all';
 
 // ===========================
 // DOM Elements
@@ -870,9 +871,13 @@ function attachGrammarSaveButton(bubbleEl, review, originalText, sourceSentAt = 
   };
 
   saveBtn.addEventListener('pointerdown', block);
-  saveBtn.addEventListener('click', (event) => {
+  saveBtn.addEventListener('click', async (event) => {
     block(event);
-    const added = addGrammarDictionaryEntry(originalText, review, sourceSentAt || null);
+    const selectedCategoryIds = await openDictionaryCategoryPickerSheet({
+      title: '이 문법 수정 문장을 카테고리에 추가하시겠습니까?'
+    });
+    if (selectedCategoryIds === null) return;
+    const added = addGrammarDictionaryEntry(originalText, review, sourceSentAt || null, selectedCategoryIds);
     if (added) {
       saveBtn.textContent = 'Saved to My Dictionary';
       saveBtn.classList.add('saved');
@@ -1324,8 +1329,15 @@ function attachNativeOptionSwipeHandlers(alternatives, originalText, context = {
       optionCard.style.transform = '';
     };
 
-    addBtn.addEventListener('click', () => {
-      const added = addDictionaryEntry(option, originalText, context.sourceSentAt || null);
+    addBtn.addEventListener('click', async () => {
+      const selectedCategoryIds = await openDictionaryCategoryPickerSheet({
+        title: '이 표현을 카테고리에 추가하시겠습니까?'
+      });
+      if (selectedCategoryIds === null) {
+        closeRow();
+        return;
+      }
+      const added = addDictionaryEntry(option, originalText, context.sourceSentAt || null, selectedCategoryIds);
       showToast(added ? '내 사전에 추가했습니다.' : '이미 사전에 있는 표현입니다.');
       closeRow();
     });
@@ -1374,14 +1386,185 @@ function attachNativeOptionSwipeHandlers(alternatives, originalText, context = {
 }
 
 function getDictionaryEntries() {
-  return JSON.parse(localStorage.getItem('native_dictionary_entries') || '[]');
+  const entries = JSON.parse(localStorage.getItem('native_dictionary_entries') || '[]');
+  return Array.isArray(entries)
+    ? entries.map((entry) => ({
+      ...entry,
+      categoryIds: Array.isArray(entry?.categoryIds) ? entry.categoryIds.filter(Boolean) : [],
+    }))
+    : [];
 }
 
 function saveDictionaryEntries(entries) {
   localStorage.setItem('native_dictionary_entries', JSON.stringify(entries));
 }
 
-function addDictionaryEntry(option, originalText = '', sourceSentAt = null) {
+function getDictionaryCategories() {
+  const categories = JSON.parse(localStorage.getItem('native_dictionary_categories') || '[]');
+  return Array.isArray(categories)
+    ? categories
+      .map((cat) => ({
+        id: String(cat?.id || ''),
+        name: String(cat?.name || '').trim(),
+        createdAt: String(cat?.createdAt || ''),
+      }))
+      .filter((cat) => cat.id && cat.name)
+    : [];
+}
+
+function saveDictionaryCategories(categories) {
+  localStorage.setItem('native_dictionary_categories', JSON.stringify(categories));
+}
+
+function createDictionaryCategory(name) {
+  const normalized = String(name || '').trim().replace(/\s+/g, ' ');
+  if (!normalized) return { ok: false, reason: 'empty' };
+  if (normalized.length > 24) return { ok: false, reason: 'too_long' };
+
+  const categories = getDictionaryCategories();
+  const exists = categories.some((cat) => cat.name.toLowerCase() === normalized.toLowerCase());
+  if (exists) return { ok: false, reason: 'duplicate' };
+
+  const created = {
+    id: generateMessageId(),
+    name: normalized,
+    createdAt: new Date().toISOString(),
+  };
+  categories.unshift(created);
+  saveDictionaryCategories(categories);
+  return { ok: true, category: created };
+}
+
+function promptCreateDictionaryCategory() {
+  const input = window.prompt('카테고리 이름을 입력하세요 (최대 24자)', '');
+  if (input === null) return null;
+  const result = createDictionaryCategory(input);
+  if (!result.ok) {
+    if (result.reason === 'duplicate') showToast('같은 이름의 카테고리가 이미 있습니다.');
+    else if (result.reason === 'too_long') showToast('카테고리 이름은 24자 이하로 입력해주세요.');
+    else showToast('카테고리 이름을 입력해주세요.');
+    return null;
+  }
+  showToast('카테고리를 만들었습니다.');
+  if (dictionaryView?.classList.contains('active')) renderDictionaryPage();
+  return result.category;
+}
+
+function isDictionaryCategoryVisible(entry) {
+  if (dictionaryCategoryFilterId === 'all') return true;
+  const ids = Array.isArray(entry?.categoryIds) ? entry.categoryIds : [];
+  return ids.includes(dictionaryCategoryFilterId);
+}
+
+function renderDictionaryCategoryFilterRow() {
+  const categories = getDictionaryCategories();
+  const allActive = dictionaryCategoryFilterId === 'all' ? 'active' : '';
+  const chips = categories.map((cat) => {
+    const active = dictionaryCategoryFilterId === cat.id ? 'active' : '';
+    return `<button class="dictionary-category-chip ${active}" type="button" data-category-id="${escapeHtml(cat.id)}">${escapeHtml(cat.name)}</button>`;
+  }).join('');
+
+  return `
+    <div class="dictionary-category-tools">
+      <button class="dictionary-add-category-btn" type="button" id="dictionaryAddCategoryBtn">+ Category</button>
+    </div>
+    <div class="dictionary-category-row">
+      <button class="dictionary-category-chip ${allActive}" type="button" data-category-id="all">All</button>
+      ${chips}
+    </div>
+  `;
+}
+
+async function openDictionaryCategoryPickerSheet({ title = '카테고리에 추가하시겠습니까?' } = {}) {
+  const categories = getDictionaryCategories();
+
+  if (!document.body) return [];
+
+  return new Promise((resolve) => {
+    let selected = new Set();
+    let closed = false;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'dictionary-sheet-overlay';
+    overlay.innerHTML = `
+      <div class="dictionary-sheet-backdrop"></div>
+      <div class="dictionary-sheet" role="dialog" aria-modal="true" aria-label="카테고리 선택">
+        <div class="dictionary-sheet-handle"></div>
+        <div class="dictionary-sheet-title">${escapeHtml(title)}</div>
+        <div class="dictionary-sheet-subtitle">저장할 카테고리를 선택하세요 (선택 안 함 가능)</div>
+        <div class="dictionary-sheet-category-list">
+          ${categories.length === 0 ? '<div class="dictionary-sheet-empty">아직 카테고리가 없습니다.</div>' : categories.map((cat) => `
+            <button class="dictionary-sheet-category-option" type="button" data-category-id="${escapeHtml(cat.id)}">
+              <span>${escapeHtml(cat.name)}</span>
+              <span class="dictionary-sheet-check">✓</span>
+            </button>
+          `).join('')}
+        </div>
+        <div class="dictionary-sheet-actions">
+          <button class="dictionary-sheet-btn secondary" type="button" data-action="create">+ 새 카테고리</button>
+          <button class="dictionary-sheet-btn secondary" type="button" data-action="skip">카테고리 없이 저장</button>
+          <button class="dictionary-sheet-btn primary" type="button" data-action="save">선택해서 저장</button>
+          <button class="dictionary-sheet-btn ghost" type="button" data-action="cancel">취소</button>
+        </div>
+      </div>
+    `;
+
+    const close = (value) => {
+      if (closed) return;
+      closed = true;
+      overlay.classList.remove('active');
+      setTimeout(() => overlay.remove(), 180);
+      resolve(value);
+    };
+
+    overlay.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.classList.contains('dictionary-sheet-backdrop')) {
+        close(null);
+        return;
+      }
+
+      const optionBtn = target.closest('.dictionary-sheet-category-option');
+      if (optionBtn instanceof HTMLElement) {
+        const categoryId = optionBtn.dataset.categoryId;
+        if (!categoryId) return;
+        if (selected.has(categoryId)) selected.delete(categoryId);
+        else selected.add(categoryId);
+        optionBtn.classList.toggle('selected', selected.has(categoryId));
+        return;
+      }
+
+      const actionBtn = target.closest('.dictionary-sheet-btn');
+      if (!(actionBtn instanceof HTMLElement)) return;
+      const action = actionBtn.dataset.action;
+      if (action === 'cancel') return close(null);
+      if (action === 'skip') return close([]);
+      if (action === 'save') return close(Array.from(selected));
+      if (action === 'create') {
+        const created = promptCreateDictionaryCategory();
+        if (!created) return;
+        const list = overlay.querySelector('.dictionary-sheet-category-list');
+        const empty = list?.querySelector('.dictionary-sheet-empty');
+        if (empty) empty.remove();
+        if (list) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'dictionary-sheet-category-option selected';
+          btn.dataset.categoryId = created.id;
+          btn.innerHTML = `<span>${escapeHtml(created.name)}</span><span class="dictionary-sheet-check">✓</span>`;
+          list.prepend(btn);
+          selected.add(created.id);
+        }
+      }
+    });
+
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('active'));
+  });
+}
+
+function addDictionaryEntry(option, originalText = '', sourceSentAt = null, categoryIds = []) {
   const entries = getDictionaryEntries();
   const optionText = String(option?.text || '').trim();
   if (!optionText) return false;
@@ -1397,6 +1580,7 @@ function addDictionaryEntry(option, originalText = '', sourceSentAt = null) {
     text: optionText,
     tone: option.tone,
     nuance: option.nuance,
+    categoryIds: Array.isArray(categoryIds) ? [...new Set(categoryIds.filter(Boolean))] : [],
     createdAt,
   });
   saveDictionaryEntries(entries);
@@ -1407,7 +1591,7 @@ function addDictionaryEntry(option, originalText = '', sourceSentAt = null) {
   return true;
 }
 
-function addGrammarDictionaryEntry(originalText, review, sourceSentAt = null) {
+function addGrammarDictionaryEntry(originalText, review, sourceSentAt = null, categoryIds = []) {
   const correctedText = String(review?.correctedText || '').trim();
   if (!correctedText) return false;
 
@@ -1434,6 +1618,7 @@ function addGrammarDictionaryEntry(originalText, review, sourceSentAt = null) {
     text: correctedText,
     tone: '',
     nuance: '',
+    categoryIds: Array.isArray(categoryIds) ? [...new Set(categoryIds.filter(Boolean))] : [],
     grammarEdits,
     createdAt,
   });
@@ -1476,6 +1661,24 @@ function renderDictionaryFilterRow() {
       <button class="dictionary-filter-chip chip-native ${nativeActive}" type="button" data-filter-type="native">#Native Expression</button>
     </div>
   `;
+}
+
+function attachDictionaryCategoryHandlers() {
+  if (!dictionaryPageList) return;
+  const addBtn = dictionaryPageList.querySelector('#dictionaryAddCategoryBtn');
+  addBtn?.addEventListener('click', () => {
+    promptCreateDictionaryCategory();
+    renderDictionaryPage();
+  });
+
+  const chips = dictionaryPageList.querySelectorAll('.dictionary-category-chip');
+  chips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const categoryId = chip.dataset.categoryId || 'all';
+      dictionaryCategoryFilterId = categoryId;
+      renderDictionaryPage();
+    });
+  });
 }
 
 function toggleDictionaryFilter(filterType) {
@@ -1538,13 +1741,17 @@ function updateDictionaryButtonBadge() {
 function renderDictionaryPage() {
   if (!dictionaryPageList) return;
   const entries = getDictionaryEntries();
-  const visibleEntries = entries.filter((entry) => isDictionaryTypeVisible(getDictionaryEntryType(entry)));
+  const visibleEntries = entries.filter((entry) => (
+    isDictionaryTypeVisible(getDictionaryEntryType(entry)) && isDictionaryCategoryVisible(entry)
+  ));
 
   if (entries.length === 0) {
     dictionaryPageList.innerHTML = `
+      ${renderDictionaryCategoryFilterRow()}
       ${renderDictionaryFilterRow()}
       <div class="dictionary-empty">아직 저장된 표현이 없습니다.</div>
     `;
+    attachDictionaryCategoryHandlers();
     attachDictionaryFilterHandlers();
     return;
   }
@@ -1574,10 +1781,12 @@ function renderDictionaryPage() {
   `).join('');
 
   dictionaryPageList.innerHTML = `
+    ${renderDictionaryCategoryFilterRow()}
     ${renderDictionaryFilterRow()}
     ${listHtml}
   `;
 
+  attachDictionaryCategoryHandlers();
   attachDictionaryFilterHandlers();
   attachDictionarySwipeHandlers();
 }
