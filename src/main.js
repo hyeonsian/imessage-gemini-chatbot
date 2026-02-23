@@ -976,16 +976,36 @@ function getChatSelectionPayload() {
   let node = range.commonAncestorContainer;
   if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
   if (!(node instanceof HTMLElement)) return null;
-  if (!chatMessages?.contains(node)) return null;
 
-  const bubble = node.closest('.bubble');
-  if (!(bubble instanceof HTMLElement)) return null;
+  if (chatMessages?.contains(node)) {
+    const bubble = node.closest('.bubble');
+    if (!(bubble instanceof HTMLElement)) return null;
 
-  const sourceText = String(bubble.dataset.original || bubble.textContent || '').trim();
-  return {
-    text,
-    sourceText: sourceText || text,
-  };
+    const sourceText = String(bubble.dataset.original || bubble.textContent || '').trim();
+    return {
+      text,
+      sourceText: sourceText || text,
+    };
+  }
+
+  if (dictionaryView?.contains(node)) {
+    const entryCard = node.closest('.dictionary-entry');
+    if (!(entryCard instanceof HTMLElement)) return null;
+    const originalEl = entryCard.querySelector('.dictionary-entry-original');
+    const textEl = entryCard.querySelector('.dictionary-text');
+    const sourceText = String(
+      textEl?.textContent?.trim()
+      || originalEl?.textContent?.trim()
+      || entryCard.textContent
+      || ''
+    ).trim();
+    return {
+      text,
+      sourceText: sourceText || text,
+    };
+  }
+
+  return null;
 }
 
 function updateChatSelectionAddButton() {
