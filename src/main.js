@@ -56,6 +56,10 @@ let dictionaryFilterState = {
 };
 let dictionaryCategoryFilterId = 'all';
 let dictionarySortMode = 'newest';
+let chatSelectionAddState = {
+  text: '',
+  sourceText: '',
+};
 
 // ===========================
 // DOM Elements
@@ -161,6 +165,7 @@ function init() {
   renderMessages();
   loadSettings();
   setupEventListeners();
+  setupChatSelectionDictionaryAction();
   setChatSearchVisible(false);
   setupBackSwipeGesture();
   updateStatus();
@@ -946,6 +951,97 @@ function showToast(message) {
   setTimeout(() => {
     toast.classList.remove('show');
   }, 3000);
+}
+
+function ensureChatSelectionAddButton() {
+  let btn = document.getElementById('chatSelectionAddBtn');
+  if (btn) return btn;
+  btn = document.createElement('button');
+  btn.id = 'chatSelectionAddBtn';
+  btn.className = 'chat-selection-add-btn';
+  btn.type = 'button';
+  btn.hidden = true;
+  btn.textContent = '+ Add to Dictionary';
+  document.body.appendChild(btn);
+  return btn;
+}
+
+function getChatSelectionPayload() {
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+  const text = selection.toString().trim();
+  if (!text) return null;
+
+  const range = selection.getRangeAt(0);
+  let node = range.commonAncestorContainer;
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  if (!(node instanceof HTMLElement)) return null;
+  if (!chatMessages?.contains(node)) return null;
+
+  const bubble = node.closest('.bubble');
+  if (!(bubble instanceof HTMLElement)) return null;
+
+  const sourceText = String(bubble.dataset.original || bubble.textContent || '').trim();
+  return {
+    text,
+    sourceText: sourceText || text,
+  };
+}
+
+function updateChatSelectionAddButton() {
+  const btn = ensureChatSelectionAddButton();
+  const payload = getChatSelectionPayload();
+  if (!payload) {
+    chatSelectionAddState = { text: '', sourceText: '' };
+    btn.hidden = true;
+    return;
+  }
+  chatSelectionAddState = payload;
+  btn.hidden = false;
+}
+
+function clearChatSelectionAddButton() {
+  const btn = document.getElementById('chatSelectionAddBtn');
+  if (btn) btn.hidden = true;
+  chatSelectionAddState = { text: '', sourceText: '' };
+}
+
+function setupChatSelectionDictionaryAction() {
+  const btn = ensureChatSelectionAddButton();
+
+  document.addEventListener('selectionchange', () => {
+    // Delay for iOS text-selection handles to settle.
+    window.setTimeout(updateChatSelectionAddButton, 0);
+  });
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest('#chatSelectionAddBtn')) return;
+    const payload = getChatSelectionPayload();
+    if (!payload) clearChatSelectionAddButton();
+  }, true);
+
+  btn.addEventListener('click', async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const selectedText = String(chatSelectionAddState.text || '').trim();
+    if (!selectedText) return;
+
+    const selectedCategoryIds = await openDictionaryCategoryPickerSheet({
+      title: '선택한 텍스트를 카테고리에 추가하시겠습니까?'
+    });
+    if (selectedCategoryIds === null) return;
+
+    const added = addDictionaryEntry(
+      { text: selectedText, tone: 'Selected', nuance: 'Saved from chat selection' },
+      chatSelectionAddState.sourceText || selectedText,
+      new Date().toISOString(),
+      selectedCategoryIds
+    );
+    showToast(added ? '선택한 텍스트를 내 사전에 추가했습니다.' : '이미 사전에 있는 표현입니다.');
+    window.getSelection?.()?.removeAllRanges?.();
+    clearChatSelectionAddButton();
+  });
 }
 
 function stopAiSpeech() {
@@ -2637,6 +2733,7 @@ function setupBackSwipeGesture() {
 
   const isBlockedByModal = () => {
     if (conversationListView?.classList.contains('active')) return true;
+    if (dictionaryCategoryView?.classList.contains('active')) return true;
     if (settingsModal?.classList.contains('active')) return true;
     if (profileModal?.classList.contains('active')) return true;
     if (nativeSheetRefs?.overlay?.classList.contains('active')) return true;
@@ -2648,7 +2745,14 @@ function setupBackSwipeGesture() {
     backSwipeState = { tracking: false, active: false, startX: 0, startY: 0, deltaX: 0 };
     resetVisual(true);
     if (shouldOpen) {
-      window.setTimeout(() => openConversationList(), 100);
+      window.setTimeout(() => {
+        if (dictionaryView?.classList.contains('active') && dictionaryCategoryFilterId !== 'all') {
+          dictionaryCategoryFilterId = 'all';
+          renderDictionaryPage();
+          return;
+        }
+        openConversationList();
+      }, 100);
     }
   };
 

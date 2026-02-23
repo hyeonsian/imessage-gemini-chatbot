@@ -1495,6 +1495,27 @@ body.native-sheet-open {
   transform: translateX(-50%) translateY(0);
 }
 
+.chat-selection-add-btn {
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 3300;
+  border: 1px solid rgba(0, 122, 255, 0.22);
+  background: rgba(0, 122, 255, 0.96);
+  color: #fff;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.chat-selection-add-btn[hidden] {
+  display: none !important;
+}
+
 /* Native Alternatives Bottom Sheet */
 .native-sheet-overlay {
   position: fixed;
