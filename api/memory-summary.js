@@ -79,6 +79,7 @@ Rules:
 - Prioritize durable info: hobbies, goals, current projects, background, communication preferences, routine.
 - Do NOT store low-value temporary details.
 - Merge duplicates and keep one best phrasing.
+- Avoid storing near-duplicate facts across different fields.
 - Preserve existing item wording/order when still valid; only change when there is new info or a correction.
 - If nothing useful changed, set hasNewMemory=false and return the current memoryProfile unchanged.
 - Max ${MEMORY_PROFILE_MAX_ITEMS_PER_FIELD} items per field.
@@ -202,7 +203,6 @@ function sanitizeMemoryProfile(value) {
 function normalizeStringArray(value) {
   if (!Array.isArray(value)) return [];
 
-  const seen = new Set();
   const items = [];
   for (const raw of value) {
     const text = String(raw || '')
@@ -213,9 +213,7 @@ function normalizeStringArray(value) {
       .slice(0, MEMORY_PROFILE_MAX_ITEM_CHARS)
       .trim();
     if (!text) continue;
-    const key = text.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (items.some((existing) => areMemoryItemsNearDuplicate(existing, text))) continue;
     items.push(text);
     if (items.length >= MEMORY_PROFILE_MAX_ITEMS_PER_FIELD) break;
   }
@@ -228,12 +226,9 @@ function mergeMemoryProfiles(primary, secondary) {
   const merged = emptyMemoryProfile();
 
   for (const key of MEMORY_PROFILE_KEYS) {
-    const seen = new Set();
     const items = [];
     for (const candidate of [...a[key], ...b[key]]) {
-      const norm = candidate.toLowerCase();
-      if (seen.has(norm)) continue;
-      seen.add(norm);
+      if (items.some((existing) => areMemoryItemsNearDuplicate(existing, candidate))) continue;
       items.push(candidate);
       if (items.length >= MEMORY_PROFILE_MAX_ITEMS_PER_FIELD) break;
     }
@@ -300,6 +295,12 @@ function rebalanceMemoryProfile(profile) {
 
   next.notes = normalizeStringArray(remainingNotes);
 
+  // Remove note items that substantially duplicate explicit fields.
+  const explicitItems = MEMORY_PROFILE_KEYS
+    .filter((key) => key !== 'notes')
+    .flatMap((key) => next[key]);
+  next.notes = next.notes.filter((note) => !explicitItems.some((item) => areMemoryItemsNearDuplicate(item, note)));
+
   // Normalize and cap all arrays after redistribution.
   for (const key of MEMORY_PROFILE_KEYS) {
     next[key] = normalizeStringArray(next[key]);
@@ -344,10 +345,10 @@ function classifyMemoryItem(value) {
   const text = String(value || '').trim().toLowerCase();
   if (!text) return 'notes';
 
-  if (/(like|enjoy|favorite|into)\b.*\b(music|rock|lo-?fi|reading|books|games?|movies?|coffee)/.test(text)) return 'hobbies';
+  if (/(like|enjoy|favorite|into|listen(?:s|ing)? to|read(?:s|ing)?)\b.*\b(music|rock|lo-?fi|reading|books|games?|movies?|coffee|cafes?|coffee shops?)/.test(text)) return 'hobbies';
   if (/\b(goal|want to|trying to|hope to|aim to|improve|learn)\b/.test(text)) return 'goals';
   if (/\b(building|working on|develop|project|app|startup)\b/.test(text)) return 'projects';
-  if (/\bprefer|likes? .*feedback|concise feedback|short answers?|direct answers?\b/.test(text)) return 'preferences';
+  if (/\bprefer|likes? .*feedback|concise feedback|short answers?|direct answers?|quiet coffee shops?|large windows|scenic views?\b/.test(text)) return 'preferences';
   if (/\busually|every day|daily|at night|in the morning|routine|often\b/.test(text)) return 'dailyRoutine';
   if (/\bmajor|majored|college|university|job|work as|background|computer science\b/.test(text)) return 'background';
   if (/\b(nervous|confident|introvert|extrovert|shy|curious|patient)\b/.test(text)) return 'personalityTraits';
@@ -358,8 +359,63 @@ function classifyMemoryItem(value) {
 function pushUnique(target, item) {
   const text = String(item || '').trim();
   if (!text) return;
-  if (target.some((existing) => existing.toLowerCase() === text.toLowerCase())) return;
+  if (target.some((existing) => areMemoryItemsNearDuplicate(existing, text))) return;
   target.push(text);
+}
+
+function areMemoryItemsNearDuplicate(a, b) {
+  const left = String(a || '').trim();
+  const right = String(b || '').trim();
+  if (!left || !right) return false;
+
+  const leftNorm = normalizeMemoryComparable(left);
+  const rightNorm = normalizeMemoryComparable(right);
+  if (!leftNorm || !rightNorm) return false;
+  if (leftNorm === rightNorm) return true;
+
+  if (leftNorm.length >= 24 && rightNorm.length >= 24) {
+    if (leftNorm.includes(rightNorm) || rightNorm.includes(leftNorm)) return true;
+  }
+
+  const leftTokens = comparableTokens(leftNorm);
+  const rightTokens = comparableTokens(rightNorm);
+  if (leftTokens.length === 0 || rightTokens.length === 0) return false;
+
+  const leftSet = new Set(leftTokens);
+  const rightSet = new Set(rightTokens);
+  let intersection = 0;
+  for (const token of leftSet) {
+    if (rightSet.has(token)) intersection += 1;
+  }
+  const minSize = Math.min(leftSet.size, rightSet.size);
+  if (minSize < 3) return false;
+
+  const overlap = intersection / minSize;
+  return overlap >= 0.8;
+}
+
+function normalizeMemoryComparable(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/\[[^\]]+\]\s*/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function comparableTokens(text) {
+  const stopwords = new Set([
+    'the', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'at', 'for', 'with', 'as', 'such',
+    'is', 'are', 'am', 'be', 'being', 'been', 'it', 'that', 'this', 'while', 'especially',
+    'currently', 'really', 'very', 'personally'
+  ]);
+
+  return String(text || '')
+    .split(' ')
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => token.replace(/(ing|ed|s)$/i, ''))
+    .filter((token) => token.length >= 3 && !stopwords.has(token));
 }
 
 function buildMemorySummary(profile) {
