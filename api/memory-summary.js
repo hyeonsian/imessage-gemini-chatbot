@@ -30,7 +30,7 @@ export default async function handler(req, res) {
 
   const prompt = `You maintain a compact long-term memory summary for an English practice chat app.
 Return ONLY valid JSON in this schema:
-{"memorySummary":"string"}
+{"hasNewMemory":boolean,"memorySummary":"string"}
 
 Goal:
 - Preserve stable user facts/preferences/goals that help future conversation.
@@ -47,7 +47,7 @@ Rules:
 - Merge duplicates and rewrite overlapping bullets into one clearer bullet.
 - Preserve existing bullet wording/order when still valid; only change bullets when there is new information or a clear correction.
 - Prefer complete bullets over long bullets.
-- If nothing useful changed, return the previous summary unchanged.
+- If nothing useful changed, set hasNewMemory=false and return the previous summary EXACTLY unchanged in memorySummary.
 - Max ${MEMORY_SUMMARY_OUTPUT_MAX_CHARS} characters.
 
 Current memory summary:
@@ -78,7 +78,12 @@ ${normalizedHistory.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join('\n')}
 
     try {
       const parsed = parseJsonSafely(rawJson);
-      next = sanitizeMemorySummary(parsed?.memorySummary, safeCurrentSummary);
+      const hasNewMemory = Boolean(parsed?.hasNewMemory);
+      if (!hasNewMemory && safeCurrentSummary) {
+        next = safeCurrentSummary;
+      } else {
+        next = sanitizeMemorySummary(parsed?.memorySummary, safeCurrentSummary);
+      }
     } catch (parseError) {
       // Some model variants return partial JSON or plain bullets despite JSON mode.
       next = sanitizeMemorySummary(extractMemorySummaryText(rawJson), '');
