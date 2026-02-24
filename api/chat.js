@@ -22,6 +22,14 @@ const MEMORY_PROFILE_KEYS = [
   'notes',
 ];
 
+const DEFAULT_PERSONA_PROFILE = {
+  warmth: 4,
+  playfulness: 3,
+  directness: 3,
+  curiosity: 4,
+  verbosity: 2,
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -34,7 +42,7 @@ export default async function handler(req, res) {
     history,
     memorySummary = '',
     memoryProfile = null,
-    customSystemPrompt = '',
+    personaProfile = null,
   } = req.body || {};
   const input = String(message || '').trim();
   if (!input) return res.status(400).json({ error: 'message is required' });
@@ -58,8 +66,8 @@ export default async function handler(req, res) {
     { role: 'user', parts: [{ text: input }] },
   ];
 
-  const normalizedCustomSystemPrompt = String(customSystemPrompt || '').trim().slice(0, 2000);
-  const systemPrompt = buildSystemPromptWithMemory(longTermMemoryText, normalizedCustomSystemPrompt);
+  const normalizedPersonaProfile = sanitizePersonaProfile(personaProfile);
+  const systemPrompt = buildSystemPromptWithMemory(longTermMemoryText, normalizedPersonaProfile);
 
   try {
     const data = await callGeminiGenerateContent({
@@ -178,13 +186,84 @@ function buildLongTermMemoryText({ memoryProfile, memorySummary }) {
   return String(memorySummary || '').trim().slice(0, 2600);
 }
 
-function buildSystemPromptWithMemory(memoryText, customSystemPrompt = '') {
-  const customBlock = customSystemPrompt
-    ? `\n\nAdditional per-chat style instructions from the user profile (follow these unless they conflict with safety):\n${customSystemPrompt}`
-    : '';
+function sanitizePersonaProfile(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  return {
+    warmth: clampPersonaValue(source.warmth, DEFAULT_PERSONA_PROFILE.warmth),
+    playfulness: clampPersonaValue(source.playfulness, DEFAULT_PERSONA_PROFILE.playfulness),
+    directness: clampPersonaValue(source.directness, DEFAULT_PERSONA_PROFILE.directness),
+    curiosity: clampPersonaValue(source.curiosity, DEFAULT_PERSONA_PROFILE.curiosity),
+    verbosity: clampPersonaValue(source.verbosity, DEFAULT_PERSONA_PROFILE.verbosity),
+  };
+}
 
-  if (!memoryText) return `${DEFAULT_SYSTEM_PROMPT}${customBlock}`;
-  return `${DEFAULT_SYSTEM_PROMPT}${customBlock}
+function clampPersonaValue(value, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(5, Math.max(1, Math.round(num)));
+}
+
+function buildPersonaPromptBlock(persona) {
+  const warmthText = mapScaled(persona.warmth, [
+    'Keep the tone emotionally neutral and calm.',
+    'Keep the tone calm with light friendliness.',
+    'Use a balanced friendly tone.',
+    'Use a warm and supportive tone.',
+    'Be very warm, affectionate, and encouraging without sounding artificial.',
+  ]);
+
+  const playfulText = mapScaled(persona.playfulness, [
+    'Stay mostly serious and straightforward.',
+    'Use very light playful energy only when natural.',
+    'Use occasional light playful phrasing.',
+    'Be noticeably playful with friendly reactions when appropriate.',
+    'Use a playful, lively texting vibe often, but keep it natural.',
+  ]);
+
+  const directnessText = mapScaled(persona.directness, [
+    'Be gentle and indirect when phrasing suggestions or opinions.',
+    'Lean soft and polite in phrasing.',
+    'Use balanced directness.',
+    'Be fairly direct and clear about your point.',
+    'Be very direct and concise, but not rude.',
+  ]);
+
+  const curiosityText = mapScaled(persona.curiosity, [
+    'Ask follow-up questions rarely unless needed.',
+    'Ask occasional follow-up questions only when helpful.',
+    'Use balanced curiosity with some follow-up questions.',
+    'Show clear curiosity and ask follow-up questions fairly often.',
+    'Be highly curious and often ask short, relevant follow-up questions.',
+  ]);
+
+  const verbosityText = mapScaled(persona.verbosity, [
+    'Prefer extremely compact replies within the existing concise style.',
+    'Keep replies short and tight.',
+    'Use a balanced reply length while staying concise.',
+    'Use slightly fuller replies, still concise.',
+    'Use the fullest replies allowed by the existing concise style (still short, no paragraphs).',
+  ]);
+
+  return [
+    'Per-chat personality settings (apply naturally):',
+    `- Warmth ${persona.warmth}/5: ${warmthText}`,
+    `- Playfulness ${persona.playfulness}/5: ${playfulText}`,
+    `- Directness ${persona.directness}/5: ${directnessText}`,
+    `- Curiosity ${persona.curiosity}/5: ${curiosityText}`,
+    `- Reply length ${persona.verbosity}/5: ${verbosityText}`,
+  ].join('\n');
+}
+
+function mapScaled(value, options) {
+  const index = Math.min(options.length - 1, Math.max(0, (value || 1) - 1));
+  return options[index];
+}
+
+function buildSystemPromptWithMemory(memoryText, personaProfile) {
+  const personaBlock = buildPersonaPromptBlock(sanitizePersonaProfile(personaProfile));
+
+  if (!memoryText) return `${DEFAULT_SYSTEM_PROMPT}\n\n${personaBlock}`;
+  return `${DEFAULT_SYSTEM_PROMPT}\n\n${personaBlock}
 
 Long-term memory about the user (use only when relevant, naturally, and do not mention this memory list explicitly):
 ${memoryText}`;
