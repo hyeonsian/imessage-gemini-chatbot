@@ -36,14 +36,14 @@ export default async function handler(req, res) {
   const normalizedHistory = normalizeChatHistory(history);
   const safeCurrentSummary = String(currentSummary || '').trim().slice(0, MEMORY_SUMMARY_INPUT_MAX_CHARS);
   const legacyProfile = profileFromLegacySummary(safeCurrentSummary);
-  const safeCurrentProfile = mergeMemoryProfiles(
+  const safeCurrentProfile = rebalanceMemoryProfile(mergeMemoryProfiles(
     sanitizeMemoryProfile(currentMemoryProfile),
     legacyProfile
-  );
+  ));
   const resolvedModel = getModelFromRequest({ model });
 
   if (normalizedHistory.length === 0) {
-    const memoryProfile = safeCurrentProfile;
+    const memoryProfile = rebalanceMemoryProfile(safeCurrentProfile);
     return res.status(200).json({
       hasNewMemory: false,
       memoryProfile,
@@ -116,7 +116,9 @@ ${normalizedHistory.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join('\n')}
       const parsedHasNewMemory = Boolean(parsed?.hasNewMemory);
 
       if (parsedHasNewMemory) {
-        nextProfile = isMemoryProfileEmpty(parsedProfile) ? safeCurrentProfile : mergeMemoryProfiles(parsedProfile, safeCurrentProfile);
+        nextProfile = isMemoryProfileEmpty(parsedProfile)
+          ? safeCurrentProfile
+          : rebalanceMemoryProfile(mergeMemoryProfiles(parsedProfile, safeCurrentProfile));
         hasNewMemory = !memoryProfilesEqual(nextProfile, safeCurrentProfile);
       } else {
         nextProfile = safeCurrentProfile;
@@ -140,13 +142,15 @@ Recent chat:
 ${normalizedHistory.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join('\n')}`;
       const rawFallback = await callModel({ text: fallbackPrompt, jsonMode: false });
       const fallbackSummary = sanitizeMemorySummary(rawFallback, buildMemorySummary(safeCurrentProfile));
-      const fallbackProfile = mergeMemoryProfiles(safeCurrentProfile, profileFromLegacySummary(fallbackSummary));
+      const fallbackProfile = rebalanceMemoryProfile(
+        mergeMemoryProfiles(safeCurrentProfile, profileFromLegacySummary(fallbackSummary))
+      );
       nextProfile = fallbackProfile;
       hasNewMemory = !memoryProfilesEqual(nextProfile, safeCurrentProfile);
       console.warn('memory-summary structured parse fallback used:', parseError?.message || parseError);
     }
 
-    const memoryProfile = sanitizeMemoryProfile(nextProfile);
+    const memoryProfile = rebalanceMemoryProfile(sanitizeMemoryProfile(nextProfile));
     const memorySummary = buildMemorySummary(memoryProfile);
 
     return res.status(200).json({
@@ -204,6 +208,7 @@ function normalizeStringArray(value) {
     const text = String(raw || '')
       .trim()
       .replace(/\s+/g, ' ')
+      .replace(/^\[(hobby|hobbies|goal|goals|project|projects|trait|traits|personality|routine|daily routine|preference|preferences|background|note|notes)\]\s*/i, '')
       .replace(/^[-•*]\s*/, '')
       .slice(0, MEMORY_PROFILE_MAX_ITEM_CHARS)
       .trim();
@@ -260,10 +265,101 @@ function profileFromLegacySummary(summary) {
 
   if (bullets.length === 0) return emptyMemoryProfile();
 
-  return {
+  const seeded = {
     ...emptyMemoryProfile(),
     notes: normalizeStringArray(bullets),
   };
+  return rebalanceMemoryProfile(seeded);
+}
+
+function rebalanceMemoryProfile(profile) {
+  const safe = sanitizeMemoryProfile(profile);
+  const next = emptyMemoryProfile();
+
+  // Keep explicit fields first.
+  for (const key of MEMORY_PROFILE_KEYS) {
+    if (key === 'notes') continue;
+    next[key] = [...safe[key]];
+  }
+
+  const remainingNotes = [];
+  for (const note of safe.notes) {
+    const tagged = parseTaggedMemoryItem(note);
+    if (tagged) {
+      pushUnique(next[tagged.key], tagged.text);
+      continue;
+    }
+
+    const guessedKey = classifyMemoryItem(note);
+    if (guessedKey && guessedKey !== 'notes') {
+      pushUnique(next[guessedKey], note);
+    } else {
+      remainingNotes.push(note);
+    }
+  }
+
+  next.notes = normalizeStringArray(remainingNotes);
+
+  // Normalize and cap all arrays after redistribution.
+  for (const key of MEMORY_PROFILE_KEYS) {
+    next[key] = normalizeStringArray(next[key]);
+  }
+  return next;
+}
+
+function parseTaggedMemoryItem(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^\[(.+?)\]\s*(.+)$/);
+  if (!match) return null;
+
+  const rawLabel = match[1].trim().toLowerCase();
+  const payload = match[2].trim();
+  if (!payload) return null;
+
+  const labelMap = {
+    hobby: 'hobbies',
+    hobbies: 'hobbies',
+    goal: 'goals',
+    goals: 'goals',
+    project: 'projects',
+    projects: 'projects',
+    trait: 'personalityTraits',
+    traits: 'personalityTraits',
+    personality: 'personalityTraits',
+    routine: 'dailyRoutine',
+    'daily routine': 'dailyRoutine',
+    preference: 'preferences',
+    preferences: 'preferences',
+    background: 'background',
+    note: 'notes',
+    notes: 'notes',
+  };
+
+  const key = labelMap[rawLabel];
+  if (!key) return null;
+  return { key, text: payload };
+}
+
+function classifyMemoryItem(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) return 'notes';
+
+  if (/(like|enjoy|favorite|into)\b.*\b(music|rock|lo-?fi|reading|books|games?|movies?|coffee)/.test(text)) return 'hobbies';
+  if (/\b(goal|want to|trying to|hope to|aim to|improve|learn)\b/.test(text)) return 'goals';
+  if (/\b(building|working on|develop|project|app|startup)\b/.test(text)) return 'projects';
+  if (/\bprefer|likes? .*feedback|concise feedback|short answers?|direct answers?\b/.test(text)) return 'preferences';
+  if (/\busually|every day|daily|at night|in the morning|routine|often\b/.test(text)) return 'dailyRoutine';
+  if (/\bmajor|majored|college|university|job|work as|background|computer science\b/.test(text)) return 'background';
+  if (/\b(nervous|confident|introvert|extrovert|shy|curious|patient)\b/.test(text)) return 'personalityTraits';
+
+  return 'notes';
+}
+
+function pushUnique(target, item) {
+  const text = String(item || '').trim();
+  if (!text) return;
+  if (target.some((existing) => existing.toLowerCase() === text.toLowerCase())) return;
+  target.push(text);
 }
 
 function buildMemorySummary(profile) {
