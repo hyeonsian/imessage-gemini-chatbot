@@ -45,6 +45,7 @@ Rules:
 - Do NOT store sensitive identifiers unless explicitly useful to the chat.
 - Remove outdated or low-value temporary details.
 - Merge duplicates and rewrite overlapping bullets into one clearer bullet.
+- Preserve existing bullet wording/order when still valid; only change bullets when there is new information or a clear correction.
 - Prefer complete bullets over long bullets.
 - If nothing useful changed, return the previous summary unchanged.
 - Max ${MEMORY_SUMMARY_OUTPUT_MAX_CHARS} characters.
@@ -63,7 +64,7 @@ ${normalizedHistory.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join('\n')}
         body: {
           contents: [{ role: 'user', parts: [{ text }] }],
           generationConfig: {
-            temperature: 0.2,
+            temperature: 0,
             maxOutputTokens: 768,
             ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
           },
@@ -130,11 +131,13 @@ function sanitizeMemorySummary(value, fallback = '') {
     .filter(Boolean)
     .map((line) => (line.startsWith('- ') ? line : `- ${line.replace(/^[•*-]\s*/, '')}`));
 
-  const clipped = clipBulletLines(lines, {
+  const cleanedLines = removeDanglingTrailingBullets(lines);
+  const clipped = clipBulletLines(cleanedLines, {
     maxLines: MEMORY_SUMMARY_MAX_LINES,
     maxChars: MEMORY_SUMMARY_OUTPUT_MAX_CHARS,
   });
-  return clipped || String(fallback || '').trim();
+  const cleanedClipped = sanitizeClippedBullets(clipped);
+  return cleanedClipped || String(fallback || '').trim();
 }
 
 function extractMemorySummaryText(raw) {
@@ -201,4 +204,34 @@ function clipBulletLines(lines, { maxLines, maxChars }) {
   }
 
   return kept.join('\n').trim();
+}
+
+function removeDanglingTrailingBullets(lines) {
+  const next = [...(Array.isArray(lines) ? lines : [])];
+  while (next.length > 0 && isLikelyDanglingBullet(next[next.length - 1])) {
+    next.pop();
+  }
+  return next;
+}
+
+function sanitizeClippedBullets(text) {
+  const lines = String(text || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const cleaned = removeDanglingTrailingBullets(lines);
+  return cleaned.join('\n').trim();
+}
+
+function isLikelyDanglingBullet(line) {
+  const raw = String(line || '').trim();
+  if (!raw) return true;
+  const content = raw.replace(/^-\s*/, '').trim();
+  if (!content) return true;
+
+  // Common partial/truncated cases from model outputs (e.g., "-", "Currently", "Enjo")
+  if (content.length <= 4) return true;
+  if (/^[A-Za-z]+$/.test(content) && content.length < 12) return true;
+
+  return false;
 }
