@@ -7,11 +7,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { text = '', targetLang = 'Korean', model } = req.body || {};
+    const { text = '', targetLang = 'Korean', koreanSpeechLevel = 'polite', model } = req.body || {};
     const input = String(text || '').trim();
     if (!input) return res.status(400).json({ error: 'text is required' });
+    const targetLangText = String(targetLang || 'Korean');
+    const normalizedKoreanSpeechLevel = String(koreanSpeechLevel || 'polite').toLowerCase() === 'casual'
+      ? 'casual'
+      : 'polite';
 
-    const prompt = `Translate the following English text into natural, conversational ${targetLang}: "${input}"\nOnly provide the translation, no explanations.`;
+    const koreanStyleInstruction = normalizedKoreanSpeechLevel === 'casual'
+      ? 'Use natural Korean 반말 (casual speech). Do not use 존댓말 endings.'
+      : 'Use natural Korean 존댓말 (polite speech). Do not use 반말 endings.';
+
+    const prompt = /korean/i.test(targetLangText)
+      ? `Translate the following English text into natural, conversational Korean.
+${koreanStyleInstruction}
+Only provide the Korean translation, no explanations.
+Text: "${input}"`
+      : `Translate the following English text into natural, conversational ${targetLangText}: "${input}"\nOnly provide the translation, no explanations.`;
     const data = await callGeminiGenerateContent({
       apiKey: getServerApiKey(),
       model: getModelFromRequest({ model }),
