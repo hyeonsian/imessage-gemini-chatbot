@@ -49,23 +49,52 @@ Recent chat history:
 ${normalizedHistory.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join('\n')}`;
 
   try {
-    const data = await callGeminiGenerateContent({
-      apiKey,
-      model: resolvedModel,
-      body: {
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 512,
-          responseMimeType: 'application/json',
+    const callModel = async ({ text, jsonMode = false }) => {
+      const data = await callGeminiGenerateContent({
+        apiKey,
+        model: resolvedModel,
+        body: {
+          contents: [{ role: 'user', parts: [{ text }] }],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 512,
+            ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
+          },
         },
-      },
-    });
+      });
+      return extractCandidateText(data);
+    };
 
-    const raw = extractCandidateText(data);
-    const parsed = parseJsonSafely(raw);
-    const next = sanitizeMemorySummary(parsed?.memorySummary, safeCurrentSummary);
-    return res.status(200).json({ memorySummary: next });
+    const rawJson = await callModel({ text: prompt, jsonMode: true });
+    let next = '';
+
+    try {
+      const parsed = parseJsonSafely(rawJson);
+      next = sanitizeMemorySummary(parsed?.memorySummary, safeCurrentSummary);
+    } catch (parseError) {
+      // Some model variants still return plain bullets despite JSON mode.
+      next = sanitizeMemorySummary(rawJson, '');
+      if (!next) {
+        const fallbackPrompt = `Update this long-term user memory summary using the recent chat.
+Output ONLY the updated memory summary as plain text bullets (no JSON).
+Rules:
+- English only
+- 3 to 8 bullet lines, each starting with "- "
+- Keep only stable/useful facts and preferences
+- Max 700 characters
+
+Current summary:
+${safeCurrentSummary || "(empty)"}
+
+Recent chat:
+${normalizedHistory.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join('\n')}`;
+        const rawFallback = await callModel({ text: fallbackPrompt, jsonMode: false });
+        next = sanitizeMemorySummary(rawFallback, safeCurrentSummary);
+      }
+      console.warn('memory-summary parse fallback used:', parseError?.message || parseError);
+    }
+
+    return res.status(200).json({ memorySummary: next || safeCurrentSummary });
   } catch (error) {
     console.error('memory-summary api error:', error);
     return res.status(error.status || 500).json({ error: error.message || 'Memory summary failed' });
@@ -96,4 +125,3 @@ function sanitizeMemorySummary(value, fallback = '') {
   const clipped = lines.slice(0, 8).join('\n').slice(0, 700).trim();
   return clipped || String(fallback || '').trim();
 }
-
