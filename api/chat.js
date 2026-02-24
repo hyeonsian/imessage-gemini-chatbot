@@ -11,21 +11,38 @@ ALWAYS respond ONLY in natural English.
 No multiple paragraphs. No AI-style endings.
 Just answer casually like a friend.`;
 
+const MEMORY_PROFILE_KEYS = [
+  'hobbies',
+  'goals',
+  'projects',
+  'personalityTraits',
+  'dailyRoutine',
+  'preferences',
+  'background',
+  'notes',
+];
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { message = '', model, history, memorySummary = '' } = req.body || {};
+  const { message = '', model, history, memorySummary = '', memoryProfile = null } = req.body || {};
   const input = String(message || '').trim();
   if (!input) return res.status(400).json({ error: 'message is required' });
 
   const apiKey = getServerApiKey();
   if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
   const resolvedModel = getModelFromRequest({ model });
-  const longTermMemory = String(memorySummary || '').trim().slice(0, 2600);
+
   const normalizedHistory = normalizeChatHistory(history);
+  const normalizedMemoryProfile = sanitizeMemoryProfile(memoryProfile);
+  const longTermMemoryText = buildLongTermMemoryText({
+    memoryProfile: normalizedMemoryProfile,
+    memorySummary: String(memorySummary || '').trim().slice(0, 2600),
+  });
+
   const contents = [
     ...normalizedHistory.map((item) => ({
       role: item.role === 'ai' ? 'model' : 'user',
@@ -34,7 +51,7 @@ export default async function handler(req, res) {
     { role: 'user', parts: [{ text: input }] },
   ];
 
-  const systemPrompt = buildSystemPromptWithMemory(longTermMemory);
+  const systemPrompt = buildSystemPromptWithMemory(longTermMemoryText);
 
   try {
     const data = await callGeminiGenerateContent({
@@ -82,14 +99,81 @@ function normalizeChatHistory(history) {
     }))
     .filter((item) => (item.role === 'user' || item.role === 'ai') && item.text.length > 0);
 
-  // Keep recent context only to control token usage/latency.
   return normalized.slice(-16);
 }
 
-function buildSystemPromptWithMemory(memorySummary) {
-  if (!memorySummary) return DEFAULT_SYSTEM_PROMPT;
+function emptyMemoryProfile() {
+  return {
+    hobbies: [],
+    goals: [],
+    projects: [],
+    personalityTraits: [],
+    dailyRoutine: [],
+    preferences: [],
+    background: [],
+    notes: [],
+  };
+}
+
+function sanitizeMemoryProfile(value) {
+  const base = emptyMemoryProfile();
+  if (!value || typeof value !== 'object') return base;
+
+  for (const key of MEMORY_PROFILE_KEYS) {
+    const source = Array.isArray(value[key]) ? value[key] : [];
+    const seen = new Set();
+    const items = [];
+    for (const raw of source) {
+      const text = String(raw || '').trim().replace(/\s+/g, ' ').slice(0, 180).trim();
+      if (!text) continue;
+      const normalized = text.toLowerCase();
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      items.push(text);
+      if (items.length >= 10) break;
+    }
+    base[key] = items;
+  }
+
+  return base;
+}
+
+function isMemoryProfileEmpty(profile) {
+  const safe = sanitizeMemoryProfile(profile);
+  return MEMORY_PROFILE_KEYS.every((key) => safe[key].length === 0);
+}
+
+function buildLongTermMemoryText({ memoryProfile, memorySummary }) {
+  if (!isMemoryProfileEmpty(memoryProfile)) {
+    const labels = {
+      hobbies: 'Hobbies',
+      goals: 'Goals',
+      projects: 'Projects',
+      personalityTraits: 'Traits',
+      dailyRoutine: 'Routine',
+      preferences: 'Preferences',
+      background: 'Background',
+      notes: 'Notes',
+    };
+
+    const lines = [];
+    for (const key of MEMORY_PROFILE_KEYS) {
+      const items = memoryProfile[key] || [];
+      if (items.length === 0) continue;
+      for (const item of items) {
+        lines.push(`- [${labels[key]}] ${item}`);
+      }
+    }
+    return lines.join('\n').slice(0, 2600).trim();
+  }
+
+  return String(memorySummary || '').trim().slice(0, 2600);
+}
+
+function buildSystemPromptWithMemory(memoryText) {
+  if (!memoryText) return DEFAULT_SYSTEM_PROMPT;
   return `${DEFAULT_SYSTEM_PROMPT}
 
 Long-term memory about the user (use only when relevant, naturally, and do not mention this memory list explicitly):
-${memorySummary}`;
+${memoryText}`;
 }
