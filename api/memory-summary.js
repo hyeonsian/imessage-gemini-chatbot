@@ -6,6 +6,10 @@ import {
   parseJsonSafely,
 } from './_gemini_shared.js';
 
+const MEMORY_SUMMARY_INPUT_MAX_CHARS = 2600;
+const MEMORY_SUMMARY_OUTPUT_MAX_CHARS = 1400;
+const MEMORY_SUMMARY_MAX_LINES = 12;
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -17,7 +21,7 @@ export default async function handler(req, res) {
   if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
 
   const normalizedHistory = normalizeChatHistory(history);
-  const safeCurrentSummary = String(currentSummary || '').trim().slice(0, 1600);
+  const safeCurrentSummary = String(currentSummary || '').trim().slice(0, MEMORY_SUMMARY_INPUT_MAX_CHARS);
   const resolvedModel = getModelFromRequest({ model });
 
   if (normalizedHistory.length === 0) {
@@ -35,12 +39,15 @@ Goal:
 
 Rules:
 - English only.
-- 3 to 8 short bullet lines, each starting with "- ".
+- 3 to 12 short bullet lines, each starting with "- ".
+- Prioritize remembering: preferences, goals, current projects, background, and reply-style preferences.
 - Keep only durable or useful context (preferences, goals, personal background, ongoing projects, communication preferences).
 - Do NOT store sensitive identifiers unless explicitly useful to the chat.
 - Remove outdated or low-value temporary details.
+- Merge duplicates and rewrite overlapping bullets into one clearer bullet.
+- Prefer complete bullets over long bullets.
 - If nothing useful changed, return the previous summary unchanged.
-- Max 700 characters.
+- Max ${MEMORY_SUMMARY_OUTPUT_MAX_CHARS} characters.
 
 Current memory summary:
 ${safeCurrentSummary || "(empty)"}
@@ -57,7 +64,7 @@ ${normalizedHistory.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join('\n')}
           contents: [{ role: 'user', parts: [{ text }] }],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: 512,
+            maxOutputTokens: 768,
             ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
           },
         },
@@ -79,9 +86,10 @@ ${normalizedHistory.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join('\n')}
 Output ONLY the updated memory summary as plain text bullets (no JSON).
 Rules:
 - English only
-- 3 to 8 bullet lines, each starting with "- "
-- Keep only stable/useful facts and preferences
-- Max 700 characters
+- 3 to 12 bullet lines, each starting with "- "
+- Prioritize preferences, goals, projects, background, and reply style
+- Merge duplicates
+- Max ${MEMORY_SUMMARY_OUTPUT_MAX_CHARS} characters
 
 Current summary:
 ${safeCurrentSummary || "(empty)"}
@@ -122,7 +130,10 @@ function sanitizeMemorySummary(value, fallback = '') {
     .filter(Boolean)
     .map((line) => (line.startsWith('- ') ? line : `- ${line.replace(/^[•*-]\s*/, '')}`));
 
-  const clipped = lines.slice(0, 8).join('\n').slice(0, 700).trim();
+  const clipped = clipBulletLines(lines, {
+    maxLines: MEMORY_SUMMARY_MAX_LINES,
+    maxChars: MEMORY_SUMMARY_OUTPUT_MAX_CHARS,
+  });
   return clipped || String(fallback || '').trim();
 }
 
@@ -161,4 +172,33 @@ function extractMemorySummaryText(raw) {
 
   // Last resort: return raw text and let sanitizer normalize lines.
   return text;
+}
+
+function clipBulletLines(lines, { maxLines, maxChars }) {
+  const limitedLines = (Array.isArray(lines) ? lines : []).slice(0, maxLines);
+  const kept = [];
+  let used = 0;
+
+  for (const line of limitedLines) {
+    const candidate = String(line || '').trim();
+    if (!candidate) continue;
+    const separatorCost = kept.length > 0 ? 1 : 0; // newline
+    const nextCost = separatorCost + candidate.length;
+    if (used + nextCost <= maxChars) {
+      kept.push(candidate);
+      used += nextCost;
+      continue;
+    }
+    break;
+  }
+
+  // Fallback if one bullet is too long: trim to a word boundary instead of slicing mid-buffer.
+  if (kept.length === 0 && limitedLines.length > 0) {
+    const first = String(limitedLines[0] || '').trim();
+    const hard = first.slice(0, Math.max(0, maxChars));
+    const soft = hard.replace(/\s+\S*$/, '').trim();
+    return (soft || hard).trim();
+  }
+
+  return kept.join('\n').trim();
 }

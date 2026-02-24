@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   const apiKey = getServerApiKey();
   if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
   const resolvedModel = getModelFromRequest({ model });
-  const longTermMemory = String(memorySummary || '').trim().slice(0, 1600);
+  const longTermMemory = String(memorySummary || '').trim().slice(0, 2600);
   const normalizedHistory = normalizeChatHistory(history);
   const contents = [
     ...normalizedHistory.map((item) => ({
