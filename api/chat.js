@@ -28,7 +28,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { message = '', model, history, memorySummary = '', memoryProfile = null } = req.body || {};
+  const {
+    message = '',
+    model,
+    history,
+    memorySummary = '',
+    memoryProfile = null,
+    customSystemPrompt = '',
+  } = req.body || {};
   const input = String(message || '').trim();
   if (!input) return res.status(400).json({ error: 'message is required' });
 
@@ -51,7 +58,8 @@ export default async function handler(req, res) {
     { role: 'user', parts: [{ text: input }] },
   ];
 
-  const systemPrompt = buildSystemPromptWithMemory(longTermMemoryText);
+  const normalizedCustomSystemPrompt = String(customSystemPrompt || '').trim().slice(0, 2000);
+  const systemPrompt = buildSystemPromptWithMemory(longTermMemoryText, normalizedCustomSystemPrompt);
 
   try {
     const data = await callGeminiGenerateContent({
@@ -170,9 +178,13 @@ function buildLongTermMemoryText({ memoryProfile, memorySummary }) {
   return String(memorySummary || '').trim().slice(0, 2600);
 }
 
-function buildSystemPromptWithMemory(memoryText) {
-  if (!memoryText) return DEFAULT_SYSTEM_PROMPT;
-  return `${DEFAULT_SYSTEM_PROMPT}
+function buildSystemPromptWithMemory(memoryText, customSystemPrompt = '') {
+  const customBlock = customSystemPrompt
+    ? `\n\nAdditional per-chat style instructions from the user profile (follow these unless they conflict with safety):\n${customSystemPrompt}`
+    : '';
+
+  if (!memoryText) return `${DEFAULT_SYSTEM_PROMPT}${customBlock}`;
+  return `${DEFAULT_SYSTEM_PROMPT}${customBlock}
 
 Long-term memory about the user (use only when relevant, naturally, and do not mention this memory list explicitly):
 ${memoryText}`;
