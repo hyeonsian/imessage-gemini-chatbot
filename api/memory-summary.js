@@ -72,8 +72,8 @@ ${normalizedHistory.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join('\n')}
       const parsed = parseJsonSafely(rawJson);
       next = sanitizeMemorySummary(parsed?.memorySummary, safeCurrentSummary);
     } catch (parseError) {
-      // Some model variants still return plain bullets despite JSON mode.
-      next = sanitizeMemorySummary(rawJson, '');
+      // Some model variants return partial JSON or plain bullets despite JSON mode.
+      next = sanitizeMemorySummary(extractMemorySummaryText(rawJson), '');
       if (!next) {
         const fallbackPrompt = `Update this long-term user memory summary using the recent chat.
 Output ONLY the updated memory summary as plain text bullets (no JSON).
@@ -124,4 +124,41 @@ function sanitizeMemorySummary(value, fallback = '') {
 
   const clipped = lines.slice(0, 8).join('\n').slice(0, 700).trim();
   return clipped || String(fallback || '').trim();
+}
+
+function extractMemorySummaryText(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+
+  // If plain bullets already, use as-is.
+  if (text.startsWith('- ')) return text;
+
+  // Try to recover partial JSON like: {"memorySummary":"- ... (truncated)
+  const keyIndex = text.search(/"memorySummary"\s*:\s*"/i);
+  if (keyIndex !== -1) {
+    const afterKey = text.slice(keyIndex);
+    const quoteStart = afterKey.indexOf('"', afterKey.indexOf(':'));
+    if (quoteStart !== -1) {
+      let valuePortion = afterKey.slice(quoteStart + 1);
+      valuePortion = valuePortion
+        .replace(/"\s*[,}]\s*$/s, '')
+        .replace(/\\n/g, '\n')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\')
+        .trim();
+      if (valuePortion) return valuePortion;
+    }
+  }
+
+  // If the model wrapped bullets in code fences or extra prose, recover bullet lines only.
+  const bulletLines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^[-•*]\s+/.test(line));
+  if (bulletLines.length > 0) {
+    return bulletLines.join('\n');
+  }
+
+  // Last resort: return raw text and let sanitizer normalize lines.
+  return text;
 }
